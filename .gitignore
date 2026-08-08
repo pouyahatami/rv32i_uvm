@@ -1,0 +1,24 @@
+# waveform dumps / simulator scratch
+*.vcd
+*.wlf
+*.log
+transcript
+work/
+INCA_libs/
+csrc/
+*.simv
+*.daidir/
+
+# compiled objects (iss/ and rtl/testgen/iss_check/ build locally, not committed)
+*.o
+*.out
+golden_gen
+golden_gen_csr
+
+# python
+__pycache__/
+*.pyc
+
+# OS cruft
+.DS_Store
+Thumbs.db
