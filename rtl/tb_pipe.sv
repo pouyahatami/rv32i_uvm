@@ -51,6 +51,11 @@
 //       hazard_unit.sv csr_file.sv datapath.sv debug_fsm.sv riscv_pipe.sv \
 //       dmem.sv clint.sv uart_tx.sv mem_bus.sv imem.sv top.sv tb_pipe.sv
 //   vvp sim_csr
+//
+// Waveforms: add `-DDUMP_VCD` to any of the iverilog compile lines above to
+// make that testbench write build/wave_{hazard,debug,csr}.vcd, openable in
+// GTKWave. Off by default so the everyday pass/fail regression (run_sim.sh)
+// doesn't pay the dump-file cost.
 // =============================================================================
 
 module tb_pipe_hazard;
@@ -68,6 +73,13 @@ module tb_pipe_hazard;
       .WriteData(WriteData), .DataAdr(DataAdr), .MemWrite(MemWrite));
 
   always #5 clk = ~clk;
+
+`ifdef DUMP_VCD
+  initial begin
+    $dumpfile("build/wave_hazard.vcd");
+    $dumpvars(0, tb_pipe_hazard);
+  end
+`endif
 
   // ---- power-on architectural state ----
   // The register file is a RAM with no reset, which is correct hardware: the
@@ -176,6 +188,13 @@ module tb_pipe_debug;
       .WriteData(WriteData), .DataAdr(DataAdr), .MemWrite(MemWrite));
 
   always #5 clk = ~clk;
+
+`ifdef DUMP_VCD
+  initial begin
+    $dumpfile("build/wave_debug.vcd");
+    $dumpvars(0, tb_pipe_debug);
+  end
+`endif
 
   // See tb_pipe_hazard's power-on-state comment for why this is here.
   initial
@@ -290,6 +309,13 @@ module tb_pipe_csr;
       .uart_tx_byte_o(uart_tx_byte_o), .uart_tx_valid_o(uart_tx_valid_o));
 
   always #5 clk = ~clk;
+
+`ifdef DUMP_VCD
+  initial begin
+    $dumpfile("build/wave_csr.vcd");
+    $dumpvars(0, tb_pipe_csr);
+  end
+`endif
 
   // See tb_pipe_hazard's power-on-state comment for why this is here.
   initial

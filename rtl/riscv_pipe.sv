@@ -52,10 +52,10 @@ module riscv_pipe (
                   .Rs2UsedD  (Rs2UsedD));
 
   // ---- hazard_unit <-> datapath ----
-  logic [1:0] ForwardAE, ForwardBE;
+  logic [1:0] SelectAE, SelectBE;
   logic       StallF, StallD, FlushD, FlushE, FlushM;
   logic [4:0] Rs1D, Rs2D, Rs1E, Rs2E, RdE, RdM, RdW;
-  logic       ResultSrcE0, RegWriteM, RegWriteW, PCSrcE, JumpD_out;
+  logic       IsLoadE, RegWriteM, RegWriteW, PCSrcE, JumpD_out;
   logic       trap_en, mret_enE;
 
   // Declared here (ahead of hazard_unit's instantiation below, which
@@ -71,14 +71,14 @@ module riscv_pipe (
                  .RdW         (RdW),
                  .Rs1E        (Rs1E),
                  .Rs2E        (Rs2E),
-                 .ForwardAE   (ForwardAE),
-                 .ForwardBE   (ForwardBE),
+                 .SelectAE    (SelectAE),
+                 .SelectBE    (SelectBE),
                  .RdE         (RdE),
                  .Rs1D        (Rs1D),
                  .Rs2D        (Rs2D),
                  .Rs1UsedD    (Rs1UsedD),
                  .Rs2UsedD    (Rs2UsedD),
-                 .ResultSrcE0 (ResultSrcE0),
+                 .IsLoadE     (IsLoadE),
                  .StallF      (StallF),
                  .StallD      (StallD),
                  .FlushE      (FlushE),
@@ -124,12 +124,12 @@ module riscv_pipe (
              .JumpD_c       (JumpD),
              .ImmSrcD_c     (ImmSrcD),
              .InstrD        (InstrD),
-             .ForwardAE     (ForwardAE), .ForwardBE(ForwardBE),
+             .SelectAE      (SelectAE), .SelectBE(SelectBE),
              .StallF        (StallF), .StallD(StallD),
              .FlushD        (FlushD), .FlushE(FlushE), .FlushM(FlushM),
              .Rs1D          (Rs1D), .Rs2D(Rs2D),
              .Rs1E          (Rs1E), .Rs2E(Rs2E), .RdE(RdE),
-             .ResultSrcE0   (ResultSrcE0),
+             .IsLoadE       (IsLoadE),
              .RdM           (RdM), .RdW(RdW),
              .RegWriteM     (RegWriteM), .RegWriteW(RegWriteW),
              .PCSrcE        (PCSrcE),

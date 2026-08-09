@@ -503,7 +503,7 @@
             </g>
           </svg>
         </div>
-        <figcaption><b>Fig. 2.</b> Distance 1 and 2 are covered by <code>ForwardAE</code>/<code>ForwardBE</code>
+        <figcaption><b>Fig. 2.</b> Distance 1 and 2 are covered by <code>SelectAE</code>/<code>SelectBE</code>
         (green). Distance 3 &mdash; producer in WB while the consumer is still in <em>ID</em>, not EX &mdash;
         is a different mechanism's job entirely: the register file's own read-during-write bypass. This is
         exactly Chapter 08's bug&nbsp;1.</figcaption>
@@ -537,10 +537,10 @@
       <h3>Forwarding &mdash; the priority encoder</h3>
       <pre><span class="c">// hazard_unit.sv</span>
 <span class="kw">always_comb</span> begin
-  if      (RegWriteM &amp;&amp; (RdM != 0) &amp;&amp; (RdM == Rs1E)) ForwardAE = FWD_MEM;
-  else if (RegWriteW &amp;&amp; (RdW != 0) &amp;&amp; (RdW == Rs1E)) ForwardAE = FWD_WB;
-  else                                                 ForwardAE = FWD_NONE;
-  <span class="c">// identical block for Rs2E -&gt; ForwardBE</span>
+  if      (RegWriteM &amp;&amp; (RdM != 0) &amp;&amp; (RdM == Rs1E)) SelectAE = FWD_MEM;
+  else if (RegWriteW &amp;&amp; (RdW != 0) &amp;&amp; (RdW == Rs1E)) SelectAE = FWD_WB;
+  else                                                 SelectAE = FWD_NONE;
+  <span class="c">// identical block for Rs2E -&gt; SelectBE</span>
 end</pre>
       <p>Read it as: <em>&ldquo;the instruction in EX wants <code>Rs1E</code>. Is anyone ahead of it about
       to produce that register?&rdquo;</em> Three conditions, each load-bearing:</p>
@@ -580,7 +580,7 @@ end</pre>
 
       <h3>The load-use stall, and a subtler bug next to it</h3>
       <pre><span class="c">// hazard_unit.sv</span>
-<span class="kw">assign</span> lwStallD = ResultSrcE0 &amp;&amp; (RdE != 0) &amp;&amp;
+<span class="kw">assign</span> lwStallD = IsLoadE &amp;&amp; (RdE != 0) &amp;&amp;
                   ((Rs1UsedD &amp;&amp; (RdE == Rs1D)) || (Rs2UsedD &amp;&amp; (RdE == Rs2D)));</pre>
       <p><code>Rs1UsedD</code>/<code>Rs2UsedD</code> exist because an instruction word is not
       self-describing: <code>JAL</code>, <code>LUI</code>, and <code>AUIPC</code> reuse exactly the same
@@ -1043,7 +1043,7 @@ PC           &lt;= mtvec</pre>
         <div class="lbl">Pending your capture run</div>
         <p>The tables below are placeholders. Run <code class="mono">verif/wave/</code>'s capture script (see
         Chapter 10) and this section gets replaced with the real per-cycle trace &mdash; <code>PCF</code>,
-        <code>ForwardAE</code>/<code>ForwardBE</code>, <code>StallF</code>/<code>StallD</code>,
+        <code>SelectAE</code>/<code>SelectBE</code>, <code>StallF</code>/<code>StallD</code>,
         <code>FlushD</code>/<code>FlushE</code>/<code>FlushM</code>, <code>trap_en</code> &mdash; decoded
         straight out of a real VCD dump of <code>tb_pipe_hazard</code> and <code>tb_pipe_csr</code>, plus
         <code>.vcd</code> files openable directly in GTKWave, all committed to
@@ -1051,11 +1051,11 @@ PC           &lt;= mtvec</pre>
       </div>
 
       <div class="pretitle">verif/wave/vcd_extract.py &mdash; sample of the extractor's own output shape</div>
-      <pre>cycle,time_ns,PCF,InstrD,ForwardAE,ForwardBE,StallF,FlushD,FlushE,FlushM,PCSrcE
+      <pre>cycle,time_ns,PCF,InstrD,SelectAE,SelectBE,StallF,FlushD,FlushE,FlushM,PCSrcE
 <span class="c">  &hellip; filled in once wave_hazard.vcd exists &hellip;</span></pre>
 
       <p>What you should expect to see, once it's real: around cycle 3&ndash;4 of the hazard program,
-      <code>ForwardAE</code> or <code>ForwardBE</code> should read <code>2</code> (<code>FWD_MEM</code>) on
+      <code>SelectAE</code> or <code>SelectBE</code> should read <code>2</code> (<code>FWD_MEM</code>) on
       the <code>ADD x2,x1,x1</code> instruction, and <code>1</code> (<code>FWD_WB</code>) a cycle later on
       <code>ADD x3,x2,x1</code> &mdash; exactly Fig. 2. On the CSR trace, look for the single cycle where
       <code>trap_en</code> pulses high on the interrupt path and confirm no <code>FlushM</code> follows it

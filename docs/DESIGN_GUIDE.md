@@ -208,7 +208,7 @@ worth being explicit:
 
 ### 3.2 Forwarding
 
-`ForwardAE`/`ForwardBE` (2 bits each) steer the EX-stage ALU operands away
+`SelectAE`/`SelectBE` (2 bits each) steer the EX-stage ALU operands away
 from a stale register-file read toward a more recent in-flight result:
 
 | Value | Source | Meaning |
@@ -632,7 +632,7 @@ flush happened").
 the whole plan).** Good candidate seeded bugs specifically informed by
 today's work, since they're bugs *of the same shape* as ones actually
 caught during construction:
-- Swap the forward-mux source order for `ForwardAE`/`ForwardBE` back to
+- Swap the forward-mux source order for `SelectAE`/`SelectBE` back to
   the wrong one (§3.2's real bug, reintroduced on purpose) — confirms your
   scoreboard catches a hazard-only bug that a hazard-free random run would
   never expose.

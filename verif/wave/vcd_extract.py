@@ -12,11 +12,11 @@ writing one CSV row per cycle.
 
 Usage:
     python3 vcd_extract.py --vcd wave.vcd --clock clk \
-        --signals PCF,InstrD,ForwardAE,ForwardBE,StallF,FlushD,FlushE,FlushM \
+        --signals PCF,InstrD,SelectAE,SelectBE,StallF,FlushD,FlushE,FlushM \
         --out trace.csv
 
 Signal matching is by NAME, not by exact hierarchical path: a requested
-name like "ForwardAE" matches any VCD variable whose own declared name
+name like "SelectAE" matches any VCD variable whose own declared name
 (the last path component) equals it, and if more than one instance in the
 design happens to share that name (the same net can appear under two
 scopes if a module re-exports a same-named port), the shortest/least-

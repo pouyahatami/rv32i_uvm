@@ -57,8 +57,8 @@ module datapath (
     output logic [31:0] InstrD,                  // fed back out to controller.sv
 
     // ---- hazard_unit.sv ----
-    input  logic [1:0]  ForwardAE,
-    input  logic [1:0]  ForwardBE,
+    input  logic [1:0]  SelectAE,
+    input  logic [1:0]  SelectBE,
     input  logic        StallF,
     input  logic        StallD,
     input  logic        FlushD,
@@ -69,7 +69,7 @@ module datapath (
     output logic [4:0]  Rs1E,
     output logic [4:0]  Rs2E,
     output logic [4:0]  RdE,
-    output logic        ResultSrcE0,
+    output logic        IsLoadE,
     output logic [4:0]  RdM,
     output logic [4:0]  RdW,
     output logic        RegWriteM,
@@ -115,7 +115,7 @@ module datapath (
   logic [31:0] PCNextF, PCPlus4F, PCTargetD, PCTargetE;
   logic [31:0] mtvec_w, mepc_w; // from csr_file, declared here so the PC mux can see them
 
-  always_comb begin
+  always_comb begin //should this not happen on posedge clk?
     if      (EnterDebug) PCNextF = dm_halt_addr_i;
     else if (ExitDebug)  PCNextF = dpc;
     else if (trap_en)    PCNextF = mtvec_w;   // exception or interrupt -- direct mode only
@@ -187,7 +187,14 @@ module datapath (
 
   assign is_ebreakE = ctrlE.is_ebreak;
   assign is_dretE   = ctrlE.is_dret;
-  assign ResultSrcE0 = ctrlE.ResultSrc[0]; // ResultSrc==01 (load) is the only value with bit0 set
+  // Explicit equality, not a bit-0 shortcut: RESULT_MEM (2'b01) and RESULT_CSR
+  // (2'b11) both have bit 0 set, so `ctrlE.ResultSrc[0]` would also fire on a
+  // CSR read reaching EX. A CSR read has no load-use-style delay -- csr_file.sv
+  // commits/reads at EX-stage timing, same as an ALU op -- so that would only
+  // have cost hazard_unit.sv an unnecessary stall cycle, not produced a wrong
+  // answer, but it made this signal say something other than what its name
+  // (and hazard_unit.sv's use of it) claims.
+  assign IsLoadE = (ctrlE.ResultSrc == RESULT_MEM);
 
   // ================= Execute =================
   logic [31:0] SrcAE_reg, SrcAE, SrcBE_reg, WriteDataE, ALUResultE;
@@ -199,8 +206,8 @@ module datapath (
   // is exactly the thing that was wired backwards in an earlier pass; the
   // named constants don't prevent that class of mistake by themselves,
   // but make it easier to grep/verify against hazard_unit.sv's encoding.
-  mux3 #(32) forwardamux (.d0(RD1E), .d1(ResultW), .d2(ALUResultM), .s(ForwardAE), .y(SrcAE_reg));
-  mux3 #(32) forwardbmux (.d0(RD2E), .d1(ResultW), .d2(ALUResultM), .s(ForwardBE), .y(WriteDataE));
+  mux3 #(32) forwardamux (.d0(RD1E), .d1(ResultW), .d2(ALUResultM), .s(SelectAE), .y(SrcAE_reg));
+  mux3 #(32) forwardbmux (.d0(RD2E), .d1(ResultW), .d2(ALUResultM), .s(SelectBE), .y(WriteDataE));
 
   mux2 #(32) srcamux (.d0(SrcAE_reg), .d1(PCE), .s(ctrlE.AUIPCSel), .y(SrcAE));
   mux2 #(32) srcbmux (.d0(WriteDataE), .d1(ImmExtE), .s(ctrlE.ALUSrc), .y(SrcBE_reg));

@@ -1,7 +1,7 @@
 // =============================================================================
 // hazard_unit.sv
 //
-// Central hazard-detection unit for the 5-stage RV32I pipeline. Purely
+// Hazard-detection unit for the 5-stage RV32I pipeline. Purely
 // combinational: computes EX-stage operand forwarding, the load-use stall,
 // and every pipeline-register flush condition from state exposed by
 // datapath.sv and debug_fsm.sv. Instantiated alongside those modules (not
@@ -9,7 +9,7 @@
 // datapath.sv's forwarding muxes and pipeline-register load conditions.
 //
 // ---- Forwarding ----
-// ForwardAE/ForwardBE steer the EX-stage ALU operands away from a stale
+// SelectAE/SelectBE steer the EX-stage ALU operands away from a stale
 // register-file read toward the MEM- or WB-stage result when an in-flight
 // producer matches. MEM is checked before WB in priority so that three
 // back-to-back dependent instructions correctly forward from the more
@@ -55,15 +55,15 @@ module hazard_unit (
     input  logic [4:0] RdW,
     input  logic [4:0] Rs1E,
     input  logic [4:0] Rs2E,
-    output logic [1:0] ForwardAE,
-    output logic [1:0] ForwardBE,
+    output logic [1:0] SelectAE,
+    output logic [1:0] SelectBE,
 
     input  logic [4:0] RdE,
     input  logic [4:0] Rs1D,
     input  logic [4:0] Rs2D,
     input  logic       Rs1UsedD,     // does D-stage instr actually read rs1?
     input  logic       Rs2UsedD,     // does D-stage instr actually read rs2?
-    input  logic       ResultSrcE0,  // 1 when the EX-stage instruction is a load
+    input  logic       IsLoadE,      // 1 when the EX-stage instruction is a load
     output logic       StallF,
     output logic       StallD,
     output logic       FlushE,
@@ -82,17 +82,17 @@ module hazard_unit (
 
   // ---- forwarding ----
   always_comb begin
-    if      (RegWriteM && (RdM != 0) && (RdM == Rs1E)) ForwardAE = FWD_MEM;
-    else if (RegWriteW && (RdW != 0) && (RdW == Rs1E)) ForwardAE = FWD_WB;
-    else                                                 ForwardAE = FWD_NONE;
+    if      (RegWriteM && (RdM != 0) && (RdM == Rs1E)) SelectAE = FWD_MEM;
+    else if (RegWriteW && (RdW != 0) && (RdW == Rs1E)) SelectAE = FWD_WB;
+    else                                                 SelectAE = FWD_NONE;
 
-    if      (RegWriteM && (RdM != 0) && (RdM == Rs2E)) ForwardBE = FWD_MEM;
-    else if (RegWriteW && (RdW != 0) && (RdW == Rs2E)) ForwardBE = FWD_WB;
-    else                                                 ForwardBE = FWD_NONE;
+    if      (RegWriteM && (RdM != 0) && (RdM == Rs2E)) SelectBE = FWD_MEM;
+    else if (RegWriteW && (RdW != 0) && (RdW == Rs2E)) SelectBE = FWD_WB;
+    else                                                 SelectBE = FWD_NONE;
   end
 
   // ---- load-use stall ----
-  assign lwStallD = ResultSrcE0 && (RdE != 0) &&
+  assign lwStallD = IsLoadE && (RdE != 0) &&
                     ((Rs1UsedD && (RdE == Rs1D)) || (Rs2UsedD && (RdE == Rs2D)));
   assign StallF   = lwStallD;
   assign StallD   = lwStallD;
