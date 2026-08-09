@@ -1,52 +1,49 @@
 // =============================================================================
 // hazard_unit.sv
 //
-// All hazard detection for the 5-stage pipeline lives here: forwarding
-// (data hazards resolved without a stall), the load-use stall (one data
-// hazard forwarding can't fix, because the data doesn't exist yet), and
-// flush control for control hazards (mispredicted branch/jalr, jal
-// resolving in ID, debug-halt entry, and -- new this milestone -- a
-// trap being taken or an mret redirecting the PC).
+// Central hazard-detection unit for the 5-stage RV32I pipeline. Purely
+// combinational: computes EX-stage operand forwarding, the load-use stall,
+// and every pipeline-register flush condition from state exposed by
+// datapath.sv and debug_fsm.sv. Instantiated alongside those modules (not
+// nested inside them) in riscv_pipe.sv, which wires its outputs back into
+// datapath.sv's forwarding muxes and pipeline-register load conditions.
 //
 // ---- Forwarding ----
-// (unchanged -- see rv32i_pkg.sv / datapath.sv's forwardamux/forwardbmux
-// comments for the FWD_MEM/FWD_WB encoding this must match.)
+// ForwardAE/ForwardBE steer the EX-stage ALU operands away from a stale
+// register-file read toward the MEM- or WB-stage result when an in-flight
+// producer matches. MEM is checked before WB in priority so that three
+// back-to-back dependent instructions correctly forward from the more
+// recent producer. The FWD_MEM/FWD_WB encoding must match rv32i_pkg.sv and
+// the forwardamux/forwardbmux port order in datapath.sv.
 //
 // ---- Load-use stall ----
-// (unchanged.)
+// lwStallD detects a load in EX whose destination register is read by the
+// D-stage instruction -- a hazard forwarding cannot cover, since the loaded
+// value does not exist until MEM. Detection is gated by Rs1UsedD/Rs2UsedD
+// (from controller.sv) so that JAL/LUI/AUIPC and the *I-immediate CSR ops,
+// which reuse the rs1/rs2 bit positions as immediate bits, cannot trigger a
+// spurious stall.
 //
-// ---- Flushes (EXTENDED this milestone) ----
-// FlushD/FlushE now also fire on trap_en (a trap is being taken this
-// cycle -- exception or interrupt) or mret_enE (mret is redirecting the
-// PC): exactly the same reasoning as a mispredicted branch -- whatever
-// sequentially-fetched content is sitting in D/about-to-enter-E is
-// wrong-path and must be squashed, the same way it would be for a taken
-// branch.
+// ---- Flushes ----
+// FlushD  (IF/ID  -> NOP)   : PCSrcE | JumpD | EnterDebug | ExitDebug | trap_en | mret_enE
+// FlushE  (ID/EX  -> bubble): PCSrcE | lwStallD | EnterDebug | ExitDebug | trap_en | mret_enE
+// FlushM  (EX/MEM -> bubble): EnterDebug | trap_en
 //
-// FlushD/FlushE also fire on ExitDebug (a dret resuming the core). This was
-// MISSING and is a real bug found by simulation, not by review: exit_debug
-// redirects PCNextF to dpc in datapath.sv's fetch mux, but with no flush the
-// two instructions already fetched sequentially behind the dret -- at
-// dm_halt_addr_i+4 and +8, i.e. whatever happens to sit after the debug ROM
-// stub -- stayed in D/E and executed for real after the resume. Structurally
-// identical to mret_enE, which was already handled here; dret is just the
-// debug-mode spelling of the same "redirect the PC from EX" event.
+// FlushD/FlushE fire on every event that redirects the PC away from
+// sequential fetch: a taken branch/jalr (PCSrcE), a jal resolved in ID
+// (JumpD), debug-mode entry or exit (EnterDebug/ExitDebug), a trap
+// (trap_en), or an mret (mret_enE). In each case, whatever was fetched
+// under the sequential-PC assumption is now wrong-path relative to the new
+// target and must be squashed before it can retire.
 //
-// It went unnoticed because the two simulators disagreed about what those
-// stray fetches decode to: Verilator reads uninitialised imem as 0, which is
-// an illegal opcode, so the core trapped to mtvec=0 and fell back into the
-// test's loop -- the testbench passed by luck. Icarus reads them as X, the PC
-// went X, and the core wedged. See docs/DESIGN_GUIDE.md Section 10.
-//
-// FlushM gets trap_en added (NOT mret_enE, NOT ExitDebug): a trap means the EX-stage
-// instruction itself is the one excepting/being interrupted, so ITS OWN
-// RegWrite/MemWrite must not reach the register file/dmem as it moves
-// into MEM -- same mechanism debug-halt already used to squash an
-// in-flight instruction. mret has no such self-squash need: unlike a
-// trap, mret doesn't correspond to "this instruction faulted," it's
-// just a control-transfer with no RegWrite/MemWrite of its own to
-// suppress, exactly like a taken branch/jalr never needed to be in
-// FlushM either.
+// FlushM fires only on EnterDebug or trap_en, the two cases where the
+// EX-stage instruction itself must be prevented from committing its own
+// RegWrite/MemWrite: a trapping instruction because it excepted or is being
+// interrupted, a halting instruction because dpc = PCE means it re-executes
+// for real after resume. mret and dret are pure control transfers with no
+// state write of their own to suppress, so they are deliberately excluded
+// from FlushM. See docs/DESIGN_GUIDE.md Section 10 for the verification
+// history behind this flush set.
 // =============================================================================
 
 import rv32i_pkg::*;
