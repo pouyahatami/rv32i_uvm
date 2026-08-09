@@ -22,3 +22,6 @@ __pycache__/
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# local tool config, not shared
+.claude/
