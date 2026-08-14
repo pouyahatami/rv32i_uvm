@@ -1,9 +1,9 @@
 # Spike as the reference model
 
-This directory replaces the project's former hand-written C++ ISS (`iss/`,
-deleted). Golden values for the self-checking RTL testbenches now come from
+Golden values for the self-checking RTL testbenches come from
 [Spike](https://github.com/riscv-software-src/riscv-isa-sim), RISC-V
-International's reference simulator.
+International's reference simulator, and so does the UVM environment's
+instruction stream and expected retirement trace.
 
 ## Why
 
@@ -15,9 +15,9 @@ carries no information.
 That limitation was not hypothetical here. The old ISS was structurally
 different from the DUT in one dimension — it had no pipeline — so it was a
 genuinely independent check on *microarchitecture*, and it earned its keep:
-the two real bugs in `DESIGN_GUIDE.md` §10 were both found that way. But it was
+both real RTL bugs in `docs/JOURNAL.md` were found that way. But it was
 written by the same author as the RTL for *ISA semantics*, and
-`DESIGN_GUIDE.md` §8.1 says so outright — the ISS was extended to have "the
+`docs/JOURNAL.md` says so outright: the ISS was extended to have "the
 same CSR addresses, same mcause encoding, same trap priority" as the RTL. For
 that milestone the golden model was a restatement of the design under test.
 
@@ -117,7 +117,7 @@ therefore reach any given `mtime` after different amounts of program progress.
 This does not affect the current test, which sets `mtimecmp = 0` so the
 interrupt is pending immediately on both models and the handler then defers it
 to `0xFFFFFFFF`. It is the same step-count-versus-clock-count mismatch
-`DESIGN_GUIDE.md` §8.1 documented for the previous ISS, and the reason
+`docs/DESIGN_GUIDE.md` section 8 documents, and the reason
 `tb_pipe_csr` checks final architectural state rather than "it fired on cycle
 N".
 
@@ -126,4 +126,4 @@ separate `imem` and `dmem` both based at 0. A program that stores to a low
 address overwrites its own instructions in Spike but not in the core. The
 current programs never re-execute an address they have written, so the final
 state agrees — but this is a real constraint on future test programs, and the
-same one `DESIGN_GUIDE.md` §2 recorded for the old ISS.
+same one `docs/DESIGN_GUIDE.md` section 8 records.

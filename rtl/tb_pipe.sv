@@ -8,9 +8,9 @@
 //   tb_pipe_hazard : runs riscvtest_pipe.txt (forwarding, load-use
 //     stall, store-data forwarding, branch/jal flush, x0-as-forward-
 //     source) to completion, diffs all 32 registers + 2 dmem words
-//     against golden values from the ISS. Architectural end-state must
-//     match regardless of the pipeline's internal timing -- this is the
-//     same "trust the ISS as ground truth" approach used throughout.
+//     against golden_vals_pipe.svh. Architectural end-state must match
+//     regardless of the pipeline's internal timing, which is the level
+//     every directed test here compares at.
 //
 //   tb_pipe_debug : runs riscvtest_pipe_debug.txt (a 2-instruction
 //     increment loop) and a "debug ROM" dret stub at 0x0C. Asserts
@@ -23,17 +23,19 @@
 //     read/write semantics, an ecall trap, an illegal-instruction trap,
 //     a misaligned-load trap, a misaligned-store trap, UART TX writes,
 //     and a machine-timer interrupt, in that order -- to completion,
-//     diffs all 32 registers against golden values from the ISS
-//     (rv32isim.cpp, extended this milestone to match csr_file.sv/
-//     datapath.sv's trap logic/clint.sv/uart_tx.sv exactly), and
+//     diffs all 32 registers against golden_vals_pipe_csr.svh, and
 //     independently monitors top.sv's uart_tx_byte_o/uart_tx_valid_o to
 //     check the transmitted byte stream directly.
 //
-// Run (Icarus Verilog) -- rv32i_pkg.sv/retire_if.sv are from the earlier
-// code-quality pass; csr_file.sv/clint.sv/uart_tx.sv/mem_bus.sv are new
-// this milestone (mem_bus.sv now sits between top.sv and dmem.sv, so it's
-// required even for tb_pipe_hazard/tb_pipe_debug, which never touch CSRs
-// themselves):
+// The golden .svh files are generated from Spike by verif/spike/regen.sh
+// and are checked in, so running these needs no ISS. See
+// verif/spike/README.md.
+//
+// Prefer ./run_sim.sh, which runs all three under both simulators. The
+// explicit command lines below are what it does. Every testbench needs the
+// full file list including csr_file/clint/uart_tx/mem_bus, because mem_bus.sv
+// sits between top.sv and dmem.sv unconditionally -- even tb_pipe_hazard and
+// tb_pipe_debug, which never touch a CSR:
 //   iverilog -g2012 -o sim_hazard -s tb_pipe_hazard rv32i_pkg.sv cells.sv \
 //       regfile.sv alu.sv extend.sv retire_if.sv controller.sv \
 //       hazard_unit.sv csr_file.sv datapath.sv debug_fsm.sv riscv_pipe.sv \
@@ -143,10 +145,9 @@ module tb_pipe_hazard;
 
       begin
         logic [31:0] mem_w0, mem_w1;
-        // Path updated for the CSR/trap/interrupt/UART milestone: top.sv now
-        // instantiates mem_bus.sv (instance name 'bus'), which owns dmem.sv
-        // internally (instance name 'dmem_inst') alongside clint.sv/uart_tx.sv --
-        // dmem.sv is no longer instantiated directly inside top.sv.
+        // dmem is two levels down, not one: top.sv instantiates mem_bus.sv
+        // (instance 'bus'), which owns dmem.sv (instance 'dmem_inst')
+        // alongside clint.sv and uart_tx.sv.
         mem_w0 = {dut.bus.dmem_inst.mem[3], dut.bus.dmem_inst.mem[2], dut.bus.dmem_inst.mem[1], dut.bus.dmem_inst.mem[0]};
         mem_w1 = {dut.bus.dmem_inst.mem[7], dut.bus.dmem_inst.mem[6], dut.bus.dmem_inst.mem[5], dut.bus.dmem_inst.mem[4]};
         if (mem_w0 !== expect_mem_w0) begin
@@ -280,13 +281,15 @@ module tb_pipe_csr;
   //
   // Runs riscvtest_pipe_csr.hex (program_csr.py) -- the CSR/trap/
   // interrupt/UART directed test -- to completion and diffs all 32
-  // registers against golden values from the ISS (rv32isim.cpp,
-  // extended this same milestone to stay in lockstep with csr_file.sv/
-  // datapath.sv's trap logic/clint.sv/uart_tx.sv). Same "trust the ISS
-  // as ground truth" methodology as tb_pipe_hazard -- final architectural
-  // state only, not cycle-by-cycle timing (see rv32isim.cpp's header
-  // comment on step-count vs. clock-count for why that's the right level
-  // to compare at here, especially for the interrupt).
+  // registers against golden_vals_pipe_csr.svh, generated from Spike.
+  //
+  // Final architectural state only, not cycle-by-cycle timing, and that
+  // matters most for the interrupt: clint.sv increments mtime once per
+  // clock, while Spike has no clock and its CLINT model increments once
+  // per retired instruction. The two therefore reach any given mtime after
+  // different amounts of program progress, so "the interrupt fired on
+  // cycle N" is not a comparable claim. Where the handler leaves the
+  // machine is. See verif/spike/rvproj_devices.cc.
   //
   // Also independently monitors top.sv's uart_tx_byte_o/uart_tx_valid_o
   // pulses and checks the transmitted byte sequence directly -- a second,

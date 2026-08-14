@@ -1,16 +1,20 @@
 // =============================================================================
 // riscv_pipe.sv
 //
-// Top-level pipelined core: wires controller.sv (D-stage decode),
-// hazard_unit.sv (forwarding/stall/flush), datapath.sv (the pipeline,
-// which now also owns csr_file.sv internally), debug_fsm.sv (unchanged),
-// and retire_if.sv.
+// The pipelined core. This file is structural: it declares the wires between
+// the four blocks and instantiates them. All behaviour lives in
 //
-// EXTENDED (CSR/trap/interrupt milestone): one new port, mtip_i (the
-// timer-pending signal from clint.sv, threaded in from top.sv), passed
-// straight through to datapath.sv. Two new internal wires, trap_en and
-// mret_enE, now flow datapath.sv -> hazard_unit.sv (for FlushD/E/M) --
-// the same shape as the existing PCSrcE/JumpD wiring for a mispredicted
+//   controller.sv   D-stage decode, producing the id_ex_ctrl_t bundle
+//   hazard_unit.sv  forwarding selects, stalls, and the three flushes
+//   datapath.sv     the pipeline itself, plus regfile.sv and csr_file.sv
+//   debug_fsm.sv    external-debug halt/resume
+//
+// and it also instantiates retire_if.sv, the verification-side commit tap.
+//
+// mtip_i is the timer-pending signal from clint.sv, threaded in from top.sv
+// and passed straight to datapath.sv. trap_en and mret_enE flow the other
+// way, datapath.sv -> hazard_unit.sv, so a trap or an mret flushes the
+// pipeline behind it -- the same shape as PCSrcE/JumpD for a mispredicted
 // branch.
 // =============================================================================
 
@@ -91,8 +95,7 @@ module riscv_pipe (
                  .FlushD      (FlushD),
                  .FlushM      (FlushM));
 
-  // ---- debug_fsm (fed EX-stage signals; see debug_fsm.sv's header for its
-  //      own style-retrofit note -- naming/typing only, no behavior change) ----
+  // ---- debug_fsm, fed EX-stage signals ----
   // (debug_mode_o/enter_debug/exit_debug declared above, ahead of hazard_unit)
   logic [31:0] dpc, dcsr, dscratch0, dscratch1;
   logic [31:0] PCE;
@@ -115,7 +118,7 @@ module riscv_pipe (
                            .dscratch0           (dscratch0),
                            .dscratch1           (dscratch1));
 
-  // ---- retirement interface, for a future UVM monitor ----
+  // ---- retirement interface, tapped by the UVM monitor ----
   retire_if retire(.clk(clk), .reset(reset));
 
   // ---- datapath ----
@@ -152,6 +155,10 @@ module riscv_pipe (
              .RdW_retire    (retire.rd),
              .ResultW_retire(retire.wdata),
              .RegWriteW_retire(retire.regwrite_valid),
-             .ValidW_retire (retire.retire_valid));
+             .ValidW_retire (retire.retire_valid),
+             .MemWriteW_retire (retire.store_valid),
+             .StoreAddrW_retire(retire.store_addr),
+             .StoreDataW_retire(retire.store_data),
+             .MemFunct3W_retire(retire.store_funct3));
 
 endmodule

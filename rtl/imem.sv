@@ -2,9 +2,12 @@
 // imem.sv
 //
 // Instruction memory, word-aligned, loaded from a hex file at simulation
-// start via $readmemh. EXTENDED (memory-widening milestone): MemWords
-// is now a parameter (default 4096 = 16KB of instructions, up from the
-// original 64 words), matching dmem.sv's default RAM size symmetrically.
+// start via $readmemh. MemWords defaults to 4096 (16KB), matching dmem.sv's
+// default RAM size.
+//
+// The UVM environment writes this array directly through a bound interface
+// rather than via $readmemh; see verif/uvm/mem_backdoor_bind.sv. Nothing in
+// this file knows about that, which is the point of using `bind`.
 // =============================================================================
 
 module imem #(

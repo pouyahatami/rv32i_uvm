@@ -6,14 +6,12 @@
 // datapath.sv's EX-stage logic (needs forwarded operands and the CSR
 // file, which is instantiated inside datapath.sv alongside the regfile).
 //
-// EXTENDED (CSR/trap milestone): decodes ECALL, MRET, and CSR
-// instructions (CSRRW/S/C + the *I immediate variants), plus a coarse
-// illegal-instruction check. maindec/aludecoder's internal case-statement
-// logic for the ORIGINAL RV32I opcodes is UNCHANGED -- all the new
-// decode is added as an overlay in the top-level `controller` module
-// (mirrors how is_ebreak/is_dret were already handled: decoded from
-// Instr[31:20] here, not inside maindec), so none of the previously
-// working decode paths were touched.
+// Decodes the base RV32I opcodes in maindec/aludecoder, and ECALL, MRET,
+// the CSR instructions (CSRRW/S/C and their *I immediate variants),
+// EBREAK/DRET and a coarse illegal-instruction check as an overlay in the
+// top-level `controller` module. The overlay reads Instr[31:20] directly
+// rather than pushing SYSTEM decode down into maindec, which keeps the
+// base-opcode case statements to one concern each.
 //
 // Illegal-instruction scope (documented simplification): this flags an
 // unrecognized top-level opcode, or an unrecognized funct3/funct12 under

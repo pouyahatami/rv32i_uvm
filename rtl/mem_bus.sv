@@ -1,14 +1,14 @@
 // =============================================================================
 // mem_bus.sv
 //
-// Address decoder sitting between the core's single load/store port
-// (unchanged interface: we/addr/wdata/funct3 in, rdata out -- exactly
-// what riscv_pipe.sv already drove straight into dmem.sv before this
-// milestone) and three memory-mapped targets: RAM (dmem.sv), the CLINT
-// timer block (clint.sv), and the UART (uart_tx.sv). top.sv now
-// instantiates this instead of dmem.sv directly; nothing inside
-// riscv_pipe.sv or datapath.sv changed to accommodate this -- from the
-// core's point of view it's still talking to one flat memory.
+// Address decoder between the core's single load/store port and three
+// memory-mapped targets: RAM (dmem.sv), the CLINT timer block (clint.sv),
+// and the UART (uart_tx.sv).
+//
+// It presents exactly dmem.sv's interface upward -- we/addr/wdata/funct3 in,
+// rdata out -- so from riscv_pipe.sv's point of view the core is still
+// talking to one flat memory and neither it nor datapath.sv knows the MMIO
+// devices exist. top.sv instantiates this in dmem.sv's place.
 //
 // Map (see rv32i_pkg.sv for the base-address constants):
 //   [0, RamBytes)                   -> RAM

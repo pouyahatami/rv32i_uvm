@@ -76,7 +76,7 @@ def AUIPC_(rd, imm20): return u(rd, imm20 << 12, AUIPC)
 def JAL_(rd, imm): return j(rd, imm, JAL)
 def EBREAK(): return i(0, 0, 0x001, 0, SYSTEM)
 
-# ---- CSR/trap/interrupt milestone additions ----
+# ---- SYSTEM: CSR, trap and return instructions ----
 # CSR instructions reuse the I-type encoding: imm[11:0] = csr address,
 # rs1 = source register (CSRRW/S/C) or a raw 5b zero-extended immediate
 # (CSRRWI/SI/CI -- i()'s rs1 slot just encodes whatever integer you pass
@@ -91,11 +91,10 @@ def CSRRCI(rd, csr, uimm): return i(rd, uimm, csr, 0b111, SYSTEM)
 
 def ECALL(): return i(0, 0, 0x000, 0, SYSTEM)
 def MRET():  return i(0, 0, 0x302, 0, SYSTEM)
-# DRET already exists implicitly via the debug testgen program's literal
-# encoding (0x7B200073); not re-added here since this milestone's test
-# program doesn't exercise debug.
+# No DRET helper: the debug test program encodes it literally as 0x7B200073,
+# and no program generated through this module exercises debug.
 
-# CSR addresses -- must match rv32i_pkg.sv / csr_file.sv / rv32isim.cpp exactly.
+# CSR addresses -- must match rv32i_pkg.sv and csr_file.sv exactly.
 CSR_MSTATUS  = 0x300
 CSR_MIE      = 0x304
 CSR_MTVEC    = 0x305

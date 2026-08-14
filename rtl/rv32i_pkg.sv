@@ -44,7 +44,7 @@ package rv32i_pkg;
   parameter logic [1:0] RESULT_ALU     = 2'b00;
   parameter logic [1:0] RESULT_MEM     = 2'b01;
   parameter logic [1:0] RESULT_PCPLUS4 = 2'b10;
-  parameter logic [1:0] RESULT_CSR     = 2'b11; // NEW -- CSR read-back value
+  parameter logic [1:0] RESULT_CSR     = 2'b11; // CSR read-back value
 
   // ---- forwarding mux select -------------
   parameter logic [1:0] FWD_NONE = 2'b00;
@@ -88,12 +88,12 @@ package rv32i_pkg;
     logic [3:0] ALUControl;
     logic       is_ebreak;
     logic       is_dret;
-    logic       is_ecall;   // NEW
-    logic       is_mret;    // NEW
-    logic       is_csr;     // NEW
-    logic [1:0] csr_op;     // NEW -- 01=RW, 10=RS, 11=RC (== funct3[1:0])
-    logic       csr_use_imm;// NEW -- 1 for CSRRWI/SI/CI (rs1 field is a 5b uimm)
-    logic       is_illegal; // NEW
+    logic       is_ecall;
+    logic       is_mret;
+    logic       is_csr;
+    logic [1:0] csr_op;     // 01=RW, 10=RS, 11=RC (== funct3[1:0])
+    logic       csr_use_imm;// 1 for CSRRWI/SI/CI (rs1 field is a 5b uimm)
+    logic       is_illegal;
   } id_ex_ctrl_t;
 
   // Written as a plain concatenation rather than a named assignment pattern

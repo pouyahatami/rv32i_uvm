@@ -1,15 +1,17 @@
 // =============================================================================
 // top.sv
 //
-// Top-level wrapper. EXTENDED (CSR/trap/interrupt/UART milestone):
-// instantiates mem_bus.sv instead of dmem.sv directly -- mem_bus.sv
-// internally owns dmem.sv, clint.sv, and uart_tx.sv, and exposes the
-// exact same we/addr/wdata/funct3/rdata shape dmem.sv always had, so
-// riscv_pipe.sv needed no interface changes for its data-memory port.
-// Two new signals surface here: mtip_i feeds back into riscv_pipe.sv
-// (closing the interrupt loop), and uart_tx_byte_o/uart_tx_valid_o are
-// exposed as new top-level outputs purely for a testbench monitor to
-// observe transmitted bytes (see tb_pipe.sv's tb_pipe_csr).
+// Top-level wrapper: the core (riscv_pipe.sv), instruction memory
+// (imem.sv), and the data-side bus (mem_bus.sv, which owns dmem.sv,
+// clint.sv and uart_tx.sv).
+//
+// mtip comes out of mem_bus.sv's CLINT and goes back into riscv_pipe.sv,
+// closing the timer-interrupt loop. uart_tx_byte_o/uart_tx_valid_o are
+// exposed only so a testbench can observe transmitted bytes; nothing in the
+// core reads them back (see tb_pipe_csr in tb_pipe.sv).
+//
+// This is the module both the directed testbenches and the UVM environment
+// instantiate, unmodified and with the same port list.
 // =============================================================================
 
 module top #(

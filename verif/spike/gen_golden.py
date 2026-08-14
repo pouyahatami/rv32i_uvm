@@ -3,13 +3,14 @@
 gen_golden.py -- generate a testbench's golden register/memory values by
 running its program on Spike (riscv-isa-sim), the reference RISC-V ISS.
 
-This replaces the project's former hand-written C++ ISS (iss/, deleted). The
-point of the change is trust, not convenience: a golden model written by the
-same person as the RTL, from the same reading of the spec, cannot catch a
-misreading of the spec -- both sides agree and the test passes. Spike is
+The reference is Spike rather than a model written alongside the RTL, and the
+reason is trust rather than convenience: a golden model written by the same
+person as the design, from the same reading of the specification, cannot catch
+a misreading of the specification. Both sides express the same
+misunderstanding and the test passes green carrying no information. Spike is
 maintained by RISC-V International and is the model the official compliance
-suite uses as its reference, so a disagreement between it and this core is
-evidence about the core rather than about whether two of our own files match.
+suite uses to generate its reference signatures, so a disagreement between it
+and this core is evidence about the core.
 
 Flow:
     <prog>.txt (hex words)
@@ -17,7 +18,7 @@ Flow:
       -> riscv64-unknown-elf-as / -ld           ELF, .text at 0x0, entry 0x0
       -> spike -d --debug-cmd                   run to the program's EBREAK
       -> parse `reg 0` / `mem <addr>` output
-      -> golden_vals_*.svh                      consumed unchanged by tb_pipe.sv
+      -> golden_vals_*.svh                      `include`d by tb_pipe.sv
 
 Note the assembler is doing real work here beyond file format: it is an
 independent check on testgen/asm.py's hand-rolled encodings, since the ELF is

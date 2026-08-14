@@ -62,4 +62,4 @@ SPIKE="$SPIKE" CROSS="$CROSS" python3 gen_golden.py \
 
 echo
 echo "done. tb_pipe_debug has no golden values -- debug halt/resume is not"
-echo "architectural state, so no ISS models it (see DESIGN_GUIDE.md Section 4)."
+echo "architectural state, so no ISS models it (see DESIGN_GUIDE.md section 6)."

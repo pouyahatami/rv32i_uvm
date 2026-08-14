@@ -1,14 +1,9 @@
 // =============================================================================
 // dmem.sv
 //
-// Byte-addressable data RAM with LB/LH/LW/LBU/LHU and SB/SH/SW support,
-// selected by funct3. EXTENDED (memory-widening milestone) from a fixed
-// 256-byte array to a parameterized MemBytes (default 16384 = 16KB),
-// so a program can actually have a stack and a few real data structures
-// instead of living in 256 bytes. The byte-lane logic itself is
-// unchanged from the RV32I-extension version -- only the address width
-// is now derived from MemBytes via $clog2 instead of hardcoded to 8
-// bits.
+// Byte-addressable data RAM supporting LB/LH/LW/LBU/LHU and SB/SH/SW,
+// selected by funct3. Size is MemBytes (default 16384), with the address
+// width derived from it via $clog2.
 //
 // Little-endian byte ordering (byte 0 = LSB), consistent with RV32I.
 // =============================================================================

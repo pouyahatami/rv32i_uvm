@@ -36,7 +36,7 @@
 // driven simulator (Verilator): tb_pipe_hazard's own store-data-forwarding
 // case above is exactly the distance-3 pattern, and it read x10 as 0 instead
 // of 4, loading from address 0 and returning the previous test case's value.
-// See docs/DESIGN_GUIDE.md Section 10.
+// See docs/JOURNAL.md.
 // =============================================================================
 
 module regfile (

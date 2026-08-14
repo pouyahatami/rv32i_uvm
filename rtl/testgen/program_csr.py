@@ -1,7 +1,7 @@
 # =============================================================================
 # program_csr.py
 #
-# Directed test program for the CSR/trap/interrupt/UART milestone.
+# Directed test program for the CSR, trap, interrupt and UART paths.
 # Exercises, in order:
 #   1. mtvec setup (must happen before anything that can trap)
 #   2. CSR read/write semantics (CSRRW/S/C + the *I variants, via mscratch)

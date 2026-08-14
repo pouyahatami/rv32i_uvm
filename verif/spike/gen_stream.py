@@ -6,32 +6,36 @@ and its expected retirement trace, using Spike as the reference model.
     ./gen_stream.py --seed 1 --num-instr 40 \
         --out-hex ../uvm/stream.hex --out-trace ../uvm/stream_trace.txt
 
-## Why generation moved out of SystemVerilog
+Writes two files that must always be regenerated as a pair: the program the
+DUT runs, and the retirement trace the scoreboard checks it against. A trace
+computed from a different program is a scoreboard that checks nothing.
 
-The UVM scoreboard used to call a hand-written C++ ISS live over DPI-C, one
-step per retirement. That ISS is gone (see README.md), and Spike cannot
-replace it in the same place: the environment's only documented way to run is
-EDA Playground, which builds DPI C files by uploading them alongside the
-SystemVerilog. The old ISS was four self-contained files, so that worked.
-Spike is a large library with boost and libfdt dependencies -- it cannot be
-uploaded, so a live Spike-over-DPI bridge would leave the environment with no
-way to run at all.
+## Why the stimulus is generated here rather than in the sequence
 
-Precomputing the trace keeps Spike as the authority while making the
-environment *more* portable, not less: the testbench now needs no DPI-C, no C
-compiler, and no plugins -- just two text files read with $fopen/$fscanf.
+The reference model has to be Spike, and Spike cannot be called from inside
+the simulator. The environment's documented free run target is EDA Playground,
+which compiles DPI C by uploading source files next to the SystemVerilog;
+Spike is a library with boost and libfdt dependencies and cannot be uploaded,
+so a live Spike-over-DPI bridge would leave the environment with no way to run
+at all. Precomputing keeps Spike as the authority and removes the DPI-C
+dependency entirely: the testbench needs no C compiler and no plugins, just
+two text files.
 
-The tradeoff is honest and worth stating: the stream is now fixed at generation
-time rather than randomized inside the simulator, so getting new stimulus means
-re-running this script with a new --seed rather than re-running the simulation.
-For a regression that is arguably better (a failing seed is reproducible by
-name), but it is a real change in how the environment is driven.
+Generating the program in the same place as the reference is then forced. Two
+generators seeded independently, one in Python and one in SystemVerilog, would
+drift apart and the comparison would be meaningless.
+
+The tradeoff is real and worth stating: stimulus is fixed per seed rather than
+randomized per simulation run, so new stimulus means re-running this script
+with a new --seed. For a regression that is arguably better, since a failing
+seed is reproducible by name. It also means the environment performs no
+randomization at simulation time at all, which is what lets it run under
+licences that withhold SystemVerilog randomization -- see verif/uvm/RUNNING.md.
 
 ## Generation policy
 
-Ported from the former rv32i_random_seq::body(), including its
-safety-by-construction rules, which are the reason the stream is legal without
-needing post-hoc constraints:
+The safety-by-construction rules below are the reason the stream is legal
+without needing post-hoc constraints:
 
   - x1 is a reserved "safe base pointer", set by the first instruction and
     never used as any other instruction's destination, so every load/store
@@ -44,10 +48,23 @@ needing post-hoc constraints:
   - ~40% of instructions force rs1 to the previous instruction's destination,
     so RAW hazards appear far more often than uniform-random choice gives.
 
-One fix relative to the SystemVerilog original: a forward branch in the last
-few instructions could jump *past* the end of the program, into unwritten
-memory. Padding NOPs are now emitted between the body and the sentinel so
-every branch target lands inside the program regardless of where it occurs.
+Padding NOPs are emitted between the body and the sentinel so that a forward
+branch among the last few instructions cannot jump past the end of the program
+into unwritten memory. Every branch target lands inside the program regardless
+of where the branch occurs.
+
+## Trace format
+
+One row per retirement, in retirement order:
+
+    pc instr rd wdata regwrite store_valid store_addr store_data
+
+All hex except rd, regwrite and store_valid, which are decimal. When
+store_valid is 0 the two store columns are 0 and carry no meaning.
+
+Older traces have only the first five columns; the scoreboard accepts those
+and disables store checking, so a stale trace degrades loudly rather than
+silently passing stores that were never compared.
 """
 
 import argparse
@@ -84,10 +101,11 @@ def data_base_for(num_instr):
 
     That is not merely a termination problem. Even if it had terminated, the
     two models would have disagreed about the whole run, so the trace would be
-    worthless as a reference for the DUT. DESIGN_GUIDE.md Section 2 recorded
-    this mismatch for the previous ISS ("only compare DUT/ISS memory at
-    addresses your program actually writes"); a random generator scattering
-    stores across low memory is what finally made it bite.
+    worthless as a reference for the DUT. DESIGN_GUIDE.md section 8 lists this
+    as one of the eight legitimate model differences. Every directed test in
+    this project respects the invariant by construction, because a human wrote
+    each one and never thought to store over the code; it took a random
+    generator scattering stores across low memory to make it bite.
 
     So x1 points past the end of the program image, with a 256-byte gap. Both
     models then agree, because neither one's data region overlaps its code.
@@ -158,7 +176,7 @@ def generate(rng, num_instr):
     # no reason connected to the DUT being wrong.
     #
     # This is the same class of problem as tb_pipe.sv's register-file
-    # initialisation (DESIGN_GUIDE.md Section 10.4): the reference model and
+    # initialisation (docs/JOURNAL.md, "Two testbench bugs"): the reference model and
     # the DUT must start from the same architectural state, and it is the
     # testbench's job to establish that rather than the RTL's. Doing it with
     # real stores rather than a backdoor keeps it inside the checked
@@ -230,11 +248,20 @@ def build_elf(words, workdir, cross):
 
 
 # --log-commits lines look like:
-#   core   0: 3 0x00000000 (0x00000093) x 1 0x00000000
-#   core   0: 3 0x00000004 (0x00b52023) mem 0x00000010 0x0000002a
+#   core   0: 3 0x00000000 (0x00000093) x 1 0x00000000            ALU op
+#   core   0: 3 0x00000004 (0x00b52023) mem 0x00000010 0x0000002a store
+#   core   0: 3 0x00000008 (0x00052083) x 1 0x2a mem 0x00000010    load
 COMMIT = re.compile(
     r"core\s+\d+:\s+\d+\s+0x([0-9a-f]+)\s+\(0x([0-9a-f]+)\)(.*)")
 REGWRITE = re.compile(r"\bx\s*(\d+)\s+0x([0-9a-f]+)")
+
+# A store is the only case where `mem` carries two operands: address then
+# value. A load prints `mem <addr>` with the loaded value in the register
+# field instead, so the second 0x... is absent and this does not match.
+# `\bx` in REGWRITE does not fire on the `x` inside `0x...` because there is
+# no word boundary between a digit and x, which is what keeps these two
+# patterns from stealing each other's operands.
+MEMWRITE = re.compile(r"\bmem\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)")
 
 
 def spike_trace(spike, elf, sentinel_word, memmap, max_instr):
@@ -258,7 +285,12 @@ def spike_trace(spike, elf, sentinel_word, memmap, max_instr):
             rd, wdata, regwrite = int(rw.group(1)), int(rw.group(2), 16), 1
         else:
             rd, wdata, regwrite = 0, 0, 0
-        trace.append((pc, instr, rd, wdata, regwrite))
+        mw = MEMWRITE.search(rest)
+        if mw:
+            st_valid, st_addr, st_data = 1, int(mw.group(1), 16), int(mw.group(2), 16)
+        else:
+            st_valid, st_addr, st_data = 0, 0, 0
+        trace.append((pc, instr, rd, wdata, regwrite, st_valid, st_addr, st_data))
         if instr == sentinel_word:
             break
     os.unlink(logname)
@@ -313,12 +345,16 @@ def main():
     with open(args.out_trace, "w") as f:
         f.write(f"// AUTO-GENERATED by verif/spike/gen_stream.py "
                 f"--seed {args.seed} --num-instr {args.num_instr}\n")
-        f.write("// Reference model: Spike. Columns: pc instr rd wdata regwrite\n")
-        for pc, instr, rd, wdata, regwrite in trace:
-            f.write(f"{pc:08x} {instr:08x} {rd:2d} {wdata:08x} {regwrite}\n")
+        f.write("// Reference model: Spike. Columns: "
+                "pc instr rd wdata regwrite store_valid store_addr store_data\n")
+        for pc, instr, rd, wdata, regwrite, sv, sa, sd in trace:
+            f.write(f"{pc:08x} {instr:08x} {rd:2d} {wdata:08x} {regwrite} "
+                    f"{sv} {sa:08x} {sd:08x}\n")
 
+    n_stores = sum(row[5] for row in trace)
     print(f"{args.out_hex}: {len(words)} words (seed {args.seed})")
-    print(f"{args.out_trace}: {len(trace)} retirements, sentinel 0x{sentinel:08x}")
+    print(f"{args.out_trace}: {len(trace)} retirements ({n_stores} stores), "
+          f"sentinel 0x{sentinel:08x}")
 
 
 if __name__ == "__main__":

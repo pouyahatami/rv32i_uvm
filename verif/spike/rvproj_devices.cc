@@ -42,7 +42,7 @@
 // clint.sv increments mtime once per CLOCK CYCLE. Spike has no notion of a
 // clock, so this increments once per instruction retired. The two therefore
 // fire the timer interrupt after different amounts of program progress. That
-// is the same step-count-vs-clock-count mismatch DESIGN_GUIDE.md Section 8.1
+// is the same step-count-vs-clock-count mismatch DESIGN_GUIDE.md section 7
 // already documented for the previous ISS, and the reason tb_pipe_csr checks
 // "the handler ran and left the right architectural state" rather than "it
 // fired on cycle N". program_csr.py's handler defers mtimecmp far into the

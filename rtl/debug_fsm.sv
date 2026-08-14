@@ -1,21 +1,18 @@
 // =============================================================================
 // debug_fsm.sv
 //
-// STYLE NOTE -- read this before assuming the "unchanged since the original
-// tutorial" claim elsewhere in this project's docs still applies to this
-// file byte-for-byte: it no longer does. This pass (lowRISC Verilog Coding
-// Style retrofit) converted the state encoding from two bare `parameter`
-// constants to a typedef enum (`state_e`, `StRunning`/`StParked`) and added
-// `unique case`, per the guide's FSM section ("typedef enum declaring
-// states... suffix type with _e... state names use UpperCamelCase").
+// External-debug halt/resume. A two-state machine: the core is either
+// running or parked at the debug halt address.
 //
-// The enum's explicit values (2'b00 / 2'b11) are the exact same encoding the
-// two parameters used, specifically so this is a naming/typing change only,
-// not a behavioral one -- the state register, the transition logic, and the
-// output decode below are otherwise untouched from the original tutorial's
-// debug_fsm.v. This file is small enough, and the regression (tb_pipe_debug)
-// exercises it directly enough, that re-verifying it after this change is
-// cheap -- see docs/DESIGN_GUIDE.md for whether that re-run has happened.
+// Entry is on an external debug request or an EBREAK; exit is on DRET, which
+// resumes at dpc. The state encoding is explicit (StRunning = 2'b00,
+// StParked = 2'b11) so the two states are Hamming-distance 2 apart rather
+// than adjacent.
+//
+// Covered directly by tb_pipe_debug in rtl/tb_pipe.sv. Debug halt/resume is
+// not architectural state, so no ISS models it and there are no golden values
+// to check against -- the testbench asserts on the halt/resume behaviour
+// itself.
 // =============================================================================
 
 module debug_fsm (

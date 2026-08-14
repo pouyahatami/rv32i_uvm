@@ -42,7 +42,7 @@
 // interrupted, a halting instruction because dpc = PCE means it re-executes
 // for real after resume. mret and dret are pure control transfers with no
 // state write of their own to suppress, so they are deliberately excluded
-// from FlushM. See docs/DESIGN_GUIDE.md Section 10 for the verification
+// from FlushM. See docs/JOURNAL.md for the verification
 // history behind this flush set.
 // =============================================================================
 

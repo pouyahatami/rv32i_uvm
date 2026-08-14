@@ -1,18 +1,18 @@
 // =============================================================================
 // alu.sv
 //
-// UNCHANGED from the RV32I extension except one addition: op 1010 = PASSB
-// (result = b, unchanged). Used by LUI in the pipelined controller so the
-// U-immediate can flow through the normal ALU/EX-stage path and the normal
-// 3-way writeback mux, instead of needing a dedicated 4th writeback source
-// threaded all the way from D to W (which the single-cycle version did,
-// but which would otherwise mean carrying ImmExt through 3 extra pipeline
-// registers just for one instruction).
+// Combinational ALU. Operation codes are named in rv32i_pkg.sv:
 //
 //   0000 add   0100 xor    1000 sra
 //   0001 sub   0101 slt    1001 sltu
-//   0010 and   0110 sll    1010 passb  (b unchanged -- LUI)
+//   0010 and   0110 sll    1010 passb
 //   0011 or    0111 srl
+//
+// PASSB returns b untouched. It exists for LUI, so the U-immediate can flow
+// through the normal EX-stage path and the normal writeback mux. The
+// alternative is a dedicated writeback source threaded from D to W, which
+// means carrying ImmExt through three extra pipeline registers to serve one
+// instruction.
 // =============================================================================
 
 module alu (
@@ -63,7 +63,7 @@ module alu (
       4'b1001:
         result = {31'b0, a < b};
       4'b1010:
-        result = b;                     // NEW — passb (lui)
+        result = b;                     // passb (lui)
       default:
         result = 32'b0;
     endcase

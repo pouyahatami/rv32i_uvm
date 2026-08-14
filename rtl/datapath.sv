@@ -3,45 +3,43 @@
 //
 // 5-stage pipelined RV32I datapath: IF -> ID -> EX -> MEM -> WB.
 //
-// EXTENDED (CSR/trap/interrupt milestone): csr_file.sv is now
-// instantiated here (same pattern as regfile -- a register-like block
-// owned by the datapath, read/written from EX-stage signals). New
-// EX-stage logic:
-//   - CSR write-data computation (CSRRW/S/C read-modify-write, done in a
-//     small dedicated mux rather than reusing the main ALU -- CSRRC
-//     needs an AND-with-inverted-operand the ALU doesn't have a control
-//     code for, and adding one just for this felt like solving a
-//     one-instruction problem by growing a shared resource).
-//   - exception detection: illegal instruction (decoded in
-//     controller.sv), ecall, misaligned load/store address (computed
-//     here since it needs ALUResultE, the EX-stage address).
-//   - timer-interrupt detection, gated by `validE` (see below) so a
-//     flush-inserted bubble can never be mistaken for an interruptible
-//     instruction and corrupt mepc with a stale/zeroed PC.
-//   - trap/mret PC redirect, at the same priority level as (and above)
-//     PCSrcE/JumpD in the fetch mux.
+// Owns the two register-like blocks, regfile.sv and csr_file.sv, and all
+// four pipeline registers. Control comes in pre-decoded from controller.sv
+// as an id_ex_ctrl_t bundle; forwarding/stall/flush decisions come in from
+// hazard_unit.sv. See docs/DESIGN_GUIDE.md for the stage-by-stage walk.
 //
-// `validE`: a 1-bit register, separate from ctrlE, that is 0 exactly
-// when this cycle's ID/EX load was a flush-inserted bubble (FlushE or
-// reset) and 1 otherwise. ctrlE's fields already default to "do
-// nothing" on a bubble (ID_EX_CTRL_BUBBLE), so exception detection
-// doesn't strictly need this gate -- but a bubble's PCE is not a
-// meaningful resume address, and the timer interrupt condition depends
-// on global mstatus/mie/mip state, NOT on what (if anything) is in EX.
-// Without validE, a timer interrupt landing on a bubble cycle right
-// after a flush would capture mepc = 0 (or a stale PCE) instead of a
-// real, resumable address. validE is the fix.
+// EX-stage work that is not just "run the ALU":
+//   - CSR read-modify-write for CSRRW/S/C, in a small dedicated mux rather
+//     than the main ALU. CSRRC needs an AND-with-inverted-operand that the
+//     ALU has no control code for, and adding one would grow a shared
+//     resource to solve a one-instruction problem.
+//   - exception detection: illegal instruction (decoded in controller.sv),
+//     ecall, and misaligned load/store address, which is computed here
+//     because it needs ALUResultE.
+//   - timer-interrupt detection, gated by validE (below).
+//   - trap/mret PC redirect, above PCSrcE/JumpD in the fetch mux.
 //
-// EXTENDED (UVM verification milestone): validE is now carried one stage
-// further at a time through EX/MEM and MEM/WB as validM/validW, exactly
-// the same shape as InstrE/InstrM/InstrW already do. This is exposed to
-// retire_if.sv as ValidW_retire -- the definitive "did a real instruction
-// retire this cycle" signal a UVM monitor needs, and specifically NOT
-// derivable from InstrW alone: InstrW == NOP_INSTR is ambiguous (a real
-// program can contain a genuine ADDI x0,x0,0, bit-identical to a
-// flush-inserted bubble), while validW is 0 if and only if this WB-stage
-// slot was squashed, independent of what instruction word happens to sit
-// in it.
+// `validE` is a 1-bit register, separate from ctrlE, that is 0 exactly when
+// this cycle's ID/EX load was a flush-inserted bubble (FlushE or reset).
+// ctrlE's fields already default to "do nothing" on a bubble
+// (ID_EX_CTRL_BUBBLE), so exception detection does not strictly need the
+// gate. The timer interrupt does: its condition depends on global
+// mstatus/mie/mip state rather than on what is in EX, so without validE an
+// interrupt landing on a bubble cycle right after a flush would capture
+// mepc = 0 (or a stale PCE) instead of a real, resumable address.
+//
+// validE is carried through EX/MEM and MEM/WB as validM/validW, the same
+// shape InstrE/InstrM/InstrW use, and surfaces on retire_if.sv as
+// ValidW_retire. That is the signal a monitor must gate on, and it is not
+// derivable from InstrW: a real program can contain a genuine ADDI x0,x0,0,
+// bit-identical to a flush-inserted bubble, so instruction-word matching
+// cannot separate the two. validW is 0 if and only if the WB slot was
+// squashed, whatever value landed in it.
+//
+// The MEM/WB stage also carries MemWriteW/StoreAddrW/StoreDataW/
+// MemFunct3W. Those exist purely so retire_if.sv can present a store
+// alongside the retirement it belongs to; see the retirement-outputs block
+// at the bottom of this file.
 // =============================================================================
 
 import rv32i_pkg::*;
@@ -100,13 +98,17 @@ module datapath (
     // ---- CSR / timer interrupt ----
     input  logic         mtip_i,      // from clint.sv, via riscv_pipe.sv/top.sv
 
-    // ---- retirement (WB-stage), for retire_if.sv / a future UVM monitor ----
+    // ---- retirement (WB-stage), for retire_if.sv / the UVM monitor ----
     output logic [31:0] InstrW,
     output logic [31:0] PCW,
     output logic [4:0]  RdW_retire,
     output logic [31:0] ResultW_retire,
     output logic        RegWriteW_retire,
-    output logic        ValidW_retire       // see validE/validM/validW note above
+    output logic        ValidW_retire,      // see validE/validM/validW note above
+    output logic        MemWriteW_retire,   // store side of the same retirement
+    output logic [31:0] StoreAddrW_retire,
+    output logic [31:0] StoreDataW_retire,
+    output logic [2:0]  MemFunct3W_retire
 );
 
   assign JumpD = JumpD_c;
@@ -397,6 +399,14 @@ module datapath (
   // ================= MEM/WB register =================
   logic [31:0] ALUResultW, ReadDataW, PCPlus4W, CsrRdataW;
   logic [1:0]  ResultSrcW;
+  // Store address/data/width, carried one stage past the point the store
+  // actually commits (dmem sees it at MEM). Nothing in the core reads these
+  // back -- they exist so retire_if.sv can hand a monitor the store and the
+  // retirement it belongs to as one record, instead of making the monitor
+  // correlate a MEM-stage bus event with a WB-stage retirement by hand.
+  logic [31:0] StoreAddrW, StoreDataW;
+  logic [2:0]  MemFunct3W;
+  logic        MemWriteW;
   logic        validW; // validM, one stage later -- see validE/validM/validW note above.
                         // This is the signal a UVM monitor should actually gate on, NOT
                         // "InstrW != NOP_INSTR" -- a real program can legally contain a
@@ -411,12 +421,15 @@ module datapath (
       ALUResultW <= 32'b0; ReadDataW <= 32'b0; RdW <= 5'b0; PCPlus4W <= 32'b0;
       InstrW <= NOP_INSTR; PCW <= 32'b0; CsrRdataW <= 32'b0;
       validW <= 1'b0;
+      MemWriteW <= 1'b0; StoreAddrW <= 32'b0; StoreDataW <= 32'b0; MemFunct3W <= 3'b0;
     end else begin
       RegWriteW <= RegWriteM; ResultSrcW <= ResultSrcM;
       ALUResultW <= ALUResultM; ReadDataW <= ReadDataM; RdW <= RdM; PCPlus4W <= PCPlus4M;
       InstrW <= InstrM; PCW <= PCPlus4M - 32'd4; // PC of the retiring instruction
       CsrRdataW <= CsrRdataM;
       validW <= validM;
+      MemWriteW <= MemWriteM; StoreAddrW <= ALUResultM; StoreDataW <= WriteDataM;
+      MemFunct3W <= MemFunct3M;
     end
 
   // ================= Writeback =================
@@ -432,5 +445,9 @@ module datapath (
   assign ResultW_retire    = ResultW;
   assign RegWriteW_retire  = RegWriteW;
   assign ValidW_retire     = validW;
+  assign MemWriteW_retire  = MemWriteW;
+  assign StoreAddrW_retire = StoreAddrW;
+  assign StoreDataW_retire = StoreDataW;
+  assign MemFunct3W_retire = MemFunct3W;
 
 endmodule

@@ -4,16 +4,17 @@
 *.log
 transcript
 work/
+build/
 INCA_libs/
 csrc/
 *.simv
 *.daidir/
 
-# compiled objects (iss/ and rtl/testgen/iss_check/ build locally, not committed)
+# compiled objects. verif/spike's MMIO plugin is built by its Makefile, which
+# regen.sh invokes on every run -- there is no reason to commit the binary.
 *.o
+*.so
 *.out
-golden_gen
-golden_gen_csr
 
 # python
 __pycache__/
@@ -22,6 +23,8 @@ __pycache__/
 # OS cruft
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # local tool config, not shared
 .claude/
+.out-of-code-insights/
