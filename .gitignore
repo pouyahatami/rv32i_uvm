@@ -1,14 +1,34 @@
+# build output -- every simulator here writes into a build/ next to its
+# sources (rtl/build, verif/uvm/build). Regenerate with run_sim.sh / run_uvm.sh.
+build/
+build_seeds/
+obj_dir/
+
 # waveform dumps / simulator scratch
 *.vcd
 *.wlf
 *.log
 transcript
+transcript.*
 work/
-build/
 INCA_libs/
 csrc/
 *.simv
 *.daidir/
+
+# Questa/ModelSim scratch
+modelsim.ini
+vsim.dbg
+vsim_stacktrace.vstf
+vish_stacktrace.vstf
+*.mti
+.vlogansetup.args
+
+# editor / IDE state, not shared
+.vscode/
+.idea/
+*.swp
+*~
 
 # compiled objects. verif/spike's MMIO plugin is built by its Makefile, which
 # regen.sh invokes on every run -- there is no reason to commit the binary.
@@ -28,3 +48,6 @@ desktop.ini
 # local tool config, not shared
 .claude/
 .out-of-code-insights/
+
+# personal working notes -- scratch for my own study, not part of the design
+MyRISCVBallKnowledge.md
