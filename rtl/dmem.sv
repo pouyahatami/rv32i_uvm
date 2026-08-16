@@ -61,17 +61,16 @@ module dmem #(
     endcase
 
   // unique case: funct3 enumerates the 3 legal store widths (SB/SH/SW);
-  // the remaining encodings never reach this port from real RV32I decode.
   always_ff @(posedge clk)
     if (we)
       unique case (funct3)
-        3'b000: // SB
+        3'b000: // SB (1 byte)
           mem[addr] <= wd[7:0];
-        3'b001: begin // SH
+        3'b001: begin // SH (2 bytes)
           mem[{addr[AddrWidth-1:2], off[1], 1'b0}] <= wd[7:0];
           mem[{addr[AddrWidth-1:2], off[1], 1'b1}] <= wd[15:8];
         end
-        3'b010: begin // SW
+        3'b010: begin // SW (4 bytes)
           mem[{addr[AddrWidth-1:2], 2'b00}] <= wd[7:0];
           mem[{addr[AddrWidth-1:2], 2'b01}] <= wd[15:8];
           mem[{addr[AddrWidth-1:2], 2'b10}] <= wd[23:16];
