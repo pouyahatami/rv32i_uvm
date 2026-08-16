@@ -40,6 +40,14 @@
 // MemFunct3W. Those exist purely so retire_if.sv can present a store
 // alongside the retirement it belongs to; see the retirement-outputs block
 // at the bottom of this file.
+//
+// `validD` (IF/ID) is the fetch-side half of the same idea: 0 until a real
+// fetch has actually landed in Decode, and validE is loaded from it rather
+// than from a constant 1. Without it, the first clock edge after reset
+// deasserts loads validE = 1 from a Decode stage still holding the
+// reset-cleared bubble, and that bubble is announced on retire_if as a
+// retirement at PCW = 0xfffffffc -- putting every real retirement one slot
+// late. Found by the UVM environment lockstep comparison against Spike.
 // =============================================================================
 
 import rv32i_pkg::*;
@@ -138,11 +146,14 @@ module datapath (
 
   // ================= IF/ID register =================
   logic [31:0] PCD, PCPlus4D;
+  logic        validD; // 0 until the first real fetch reaches Decode -- see below
 
   always_ff @(posedge clk, posedge reset)
-    if (reset)         begin InstrD <= NOP_INSTR; PCD <= 32'h0; PCPlus4D <= 32'h0; end
-    else if (FlushD)   begin InstrD <= NOP_INSTR; end
-    else if (!StallD)  begin InstrD <= InstrF; PCD <= PCF; PCPlus4D <= PCPlus4F; end
+    if (reset)         begin InstrD <= NOP_INSTR; PCD <= 32'h0; PCPlus4D <= 32'h0;
+                             validD <= 1'b0; end
+    else if (FlushD)   begin InstrD <= NOP_INSTR; validD <= 1'b0; end
+    else if (!StallD)  begin InstrD <= InstrF; PCD <= PCF; PCPlus4D <= PCPlus4F;
+                             validD <= 1'b1; end
 
   // ================= Decode =================
   assign Rs1D = InstrD[19:15];
@@ -184,7 +195,14 @@ module datapath (
       RdE <= RdD; Rs1E <= Rs1D; Rs2E <= Rs2D; funct3E <= InstrD[14:12];
       RD1E <= RD1D; RD2E <= RD2D; PCE <= PCD; PCPlus4E <= PCPlus4D; ImmExtE <= ImmExtD;
       InstrE <= InstrD;
-      validE <= 1'b1;
+      // NOT an unconditional 1'b1. On the first edge after reset deasserts, the
+      // Decode stage still holds the reset-cleared bubble, not a fetched
+      // instruction -- asserting validE here announced that bubble as a retired
+      // instruction one cycle later at PCW = PCPlus4M - 4 = 0xfffffffc, shifting
+      // every subsequent retirement by one. Found by the UVM environment's
+      // lockstep comparison against Spike (verif/uvm/), which is exactly the
+      // class of bug a commit-log check exists to catch.
+      validE <= validD;
     end
 
   assign is_ebreakE = ctrlE.is_ebreak;
@@ -200,6 +218,7 @@ module datapath (
 
   // ================= Execute =================
   logic [31:0] SrcAE_reg, SrcAE, SrcBE_reg, WriteDataE, ALUResultE;
+  logic [31:0] FwdResultM; // MEM-stage forward source -- defined in the MEM stage
   logic        ZeroE, LtE, take_branchE;
   logic [31:0] PCTargetBranchE;
 
@@ -208,8 +227,12 @@ module datapath (
   // is exactly the thing that was wired backwards in an earlier pass; the
   // named constants don't prevent that class of mistake by themselves,
   // but make it easier to grep/verify against hazard_unit.sv's encoding.
-  mux3 #(32) forwardamux (.d0(RD1E), .d1(ResultW), .d2(ALUResultM), .s(SelectAE), .y(SrcAE_reg));
-  mux3 #(32) forwardbmux (.d0(RD2E), .d1(ResultW), .d2(ALUResultM), .s(SelectBE), .y(WriteDataE));
+  // d2 is FwdResultM, NOT ALUResultM. See FwdResultM's definition in the MEM
+  // stage below: ALUResultM is only the correct forwarded value for ALU
+  // results, and forwarding it for a CSR read or a JAL/JALR silently delivers
+  // the wrong operand.
+  mux3 #(32) forwardamux (.d0(RD1E), .d1(ResultW), .d2(FwdResultM), .s(SelectAE), .y(SrcAE_reg));
+  mux3 #(32) forwardbmux (.d0(RD2E), .d1(ResultW), .d2(FwdResultM), .s(SelectBE), .y(WriteDataE));
 
   mux2 #(32) srcamux (.d0(SrcAE_reg), .d1(PCE), .s(ctrlE.AUIPCSel), .y(SrcAE));
   mux2 #(32) srcbmux (.d0(WriteDataE), .d1(ImmExtE), .s(ctrlE.ALUSrc), .y(SrcBE_reg));
@@ -395,6 +418,43 @@ module datapath (
 
   assign ALUResultM = ALUResultM_r;
   assign WriteDataM = WriteDataM_r;
+
+  // ---- the value this MEM-stage instruction will actually write to rd ----
+  //
+  // The forwarding muxes used to take ALUResultM directly. That is correct
+  // only when the instruction's result IS the ALU result. It is wrong for:
+  //
+  //   RESULT_CSR     - a CSR read writes CsrRdataM to rd, not ALUResultM.
+  //   RESULT_PCPLUS4 - JAL/JALR write the link address PCPlus4M, not the
+  //                    jump target the ALU computed.
+  //
+  // RESULT_MEM (a load) is deliberately absent: its data does not exist yet at
+  // MEM-forward time, which is precisely why hazard_unit.sv stalls instead of
+  // forwarding it. That interlock is what makes `default` safe here.
+  //
+  // THIS WAS A REAL BUG, and the way it hid is worth recording. IsLoadE used
+  // to be `ctrlE.ResultSrc[0]`, which is true for RESULT_MEM (2'b01) *and*
+  // RESULT_CSR (2'b11). CSR reads were therefore stalled by the load-use
+  // interlock as an accident of bit numbering, and never reached the broken
+  // forward path. Commit b27d00d removed that aliasing on the reasoning that
+  // it "would only have cost an unnecessary stall cycle, not produced a wrong
+  // answer" -- correct about the stall, wrong about the answer. With the
+  // accidental protection gone, a CSR read followed immediately by a dependent
+  // instruction forwarded the ALU result instead of the CSR value.
+  //
+  // The observable failure was tb_pipe_csr hanging forever: the trap handler's
+  // `csrr x24, mepc / addi x24, x24, 4 / csrw mepc, x24` sequence wrote back a
+  // stale mepc, so `mret` returned to the ECALL that trapped, which trapped
+  // again, indefinitely.
+  //
+  // The JAL/JALR case was never covered by any test and was wrong in every
+  // version of this file, including before b27d00d. It is fixed here too.
+  always_comb
+    unique case (ResultSrcM)
+      RESULT_CSR:     FwdResultM = CsrRdataM;
+      RESULT_PCPLUS4: FwdResultM = PCPlus4M;
+      default:        FwdResultM = ALUResultM_r; // RESULT_ALU (RESULT_MEM stalls)
+    endcase
 
   // ================= MEM/WB register =================
   logic [31:0] ALUResultW, ReadDataW, PCPlus4W, CsrRdataW;
