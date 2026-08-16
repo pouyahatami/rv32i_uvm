@@ -17,7 +17,7 @@ cd "$(dirname "$0")" || exit 1
 
 FILES="rv32i_pkg.sv cells.sv regfile.sv alu.sv extend.sv retire_if.sv \
 controller.sv hazard_unit.sv csr_file.sv clint.sv uart_tx.sv mem_bus.sv \
-datapath.sv debug_fsm.sv riscv_pipe.sv dmem.sv imem.sv top.sv tb_pipe.sv"
+datapath.sv debug_fsm.sv riscv_pipe.sv dmem.sv imem.sv reset_sync.sv top.sv tb_pipe.sv"
 
 WHICH="${1:-all}"
 ONLY="${2:-}"

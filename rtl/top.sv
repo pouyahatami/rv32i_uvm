@@ -35,8 +35,18 @@ module top #(
   logic [2:0]  MemFunct3;
   logic        mtip;
 
+  // `reset` arrives here as a raw asynchronous input -- a pad, a board button,
+  // or a testbench assignment -- with no defined relationship to clk. It is
+  // synchronized once, here, and nothing downstream ever sees the raw signal:
+  // every module below consumes `rst`, which asserts asynchronously and
+  // releases on a clock edge. See reset_sync.sv for why deassertion is the
+  // half that matters.
+  logic rst;
+  reset_sync #(.Stages(2)) u_reset_sync (
+      .clk(clk), .arst_in(reset), .rst_out(rst));
+
   riscv_pipe rvpipe (.clk                 (clk),
-                    .reset               (reset),
+                    .reset               (rst),
                     .PC                  (PC),
                     .Instr               (Instr),
                     .MemWrite            (MemWrite),
@@ -53,7 +63,7 @@ module top #(
   imem #(.TestFile(TestFile)) imem (.a(PC), .rd(Instr));
 
   mem_bus #(.RamBytes(RamBytes)) bus (
-      .clk(clk), .reset(reset),
+      .clk(clk), .reset(rst),
       .we(MemWrite), .addr(DataAdr), .wdata(WriteData), .funct3(MemFunct3),
       .rdata(ReadData), .mtip_o(mtip),
       .uart_tx_byte_o(uart_tx_byte_o), .uart_tx_valid_o(uart_tx_valid_o));
