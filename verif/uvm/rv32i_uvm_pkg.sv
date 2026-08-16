@@ -53,11 +53,6 @@ package rv32i_uvm_pkg;
   `include "uvm_macros.svh"
   import rv32i_pkg::*;
 
-  // No DPI-C. The golden model is Spike, run ahead of time by
-  // verif/spike/gen_stream.py, which emits stream.hex (the program) and
-  // stream_trace.txt (the expected retirements). See the scoreboard's header
-  // for why the reference is precomputed rather than called live.
-
   // ---- shared constants ----
   `include "src/rv32i_uvm_defs.svh"
 
