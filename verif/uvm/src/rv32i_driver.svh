@@ -6,6 +6,7 @@
 class rv32i_driver extends uvm_driver #(rv32i_instr_txn);
   `uvm_component_utils(rv32i_driver)
 
+  // Handles pointing to interface instances in the top level module 
   virtual rv32i_if        vif;
   virtual mem_backdoor_if bd_vif;
 
@@ -16,22 +17,23 @@ class rv32i_driver extends uvm_driver #(rv32i_instr_txn);
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
     if (!uvm_config_db#(virtual rv32i_if)::get(this, "", "vif", vif))
-      `uvm_fatal("NOVIF", "rv32i_driver: no rv32i_if found in config_db")
+      `uvm_fatal("NOVIF", "Could not get handle to virtual interface vif")
     if (!uvm_config_db#(virtual mem_backdoor_if)::get(this, "", "bd_vif", bd_vif))
-      `uvm_fatal("NOVIF", "rv32i_driver: no mem_backdoor_if found in config_db")
+      `uvm_fatal("NOVIF", "Could not get handle to virtual interface bd_vif")
   endfunction
 
-  task run_phase(uvm_phase phase);
+  virtual task run_phase(uvm_phase phase);
     rv32i_instr_txn req;
     int             idx;
     bit             done;
 
-    // hold the DUT in reset while the program is backdoor-loaded
+    // hold the DUT in reset while the program is being loaded into imem
     vif.reset = 1'b1;
     repeat (2) @(posedge vif.clk);
 
     idx  = 0;
     done = 1'b0;
+    // Loop until every word is loaded into imem
     while (!done) begin
       seq_item_port.get_next_item(req);
       bd_vif.load_word(idx, req.instr);
@@ -41,7 +43,7 @@ class rv32i_driver extends uvm_driver #(rv32i_instr_txn);
     end
     `uvm_info("DRIVER", $sformatf("backdoor-loaded %0d instruction words", idx), UVM_LOW)
 
-    // release reset -- the loaded program starts fetching from word 0
+    // release reset
     repeat (2) @(posedge vif.clk);
     vif.reset = 1'b0;
   endtask
