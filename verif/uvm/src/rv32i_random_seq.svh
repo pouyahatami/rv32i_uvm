@@ -2,11 +2,6 @@
 // Sequence: replays the instruction stream from stream.hex, which
 // verif/spike/gen_stream.py generates together with its reference trace.
 //
-// The program is generated in Python rather than here because the reference
-// model is. A precomputed Spike trace only means something if the program it
-// was computed from is the program the DUT runs, so both come out of one
-// generator and one seed. Two generators, seeded independently, would be a
-// scoreboard that checks nothing.
 //
 // The generation policy lives in gen_stream.py. Summarised, because it is
 // what makes the stream legal without post-hoc constraints:
@@ -43,29 +38,36 @@ class rv32i_random_seq extends uvm_sequence #(rv32i_instr_txn);
     super.new(name);
   endfunction
 
-  task send(bit [31:0] w, bit last = 1'b0);
+  task send_instruction(bit [31:0] instruction, bit last_word = 1'b0);
     rv32i_instr_txn req;
+    // The item must already exist before calling start_item:
     req = rv32i_instr_txn::type_id::create("req");
     start_item(req);
-    req.instr   = w;
-    req.last_word = last;
+    // Copy the task arguments into the transaction
+    req.instr     = instruction;
+    req.last_word = last_word;
     finish_item(req);
   endtask
 
   task body();
     int        fd, code;
     int        word;
+    // SV queue
     bit [31:0] words[$];
     string     hex_file;
 
-    if (!$value$plusargs("STREAM=%s", hex_file))
+    // Use +STREAM=<file> when provided on the simulator command line;
+    // otherwise, read the default stream.hex file.
+    if (!$value$plusargs("STREAM=%s", hex_file)) begin
       hex_file = "stream.hex";
+    end
 
     fd = $fopen(hex_file, "r");
-    if (fd == 0)
+    if (fd == 0) begin 
       `uvm_fatal("NOSTREAM",
         $sformatf("cannot open instruction stream '%s' -- generate it with verif/spike/gen_stream.py",
                   hex_file))
+    end 
 
     while (!$feof(fd)) begin
       code = $fscanf(fd, "%h\n", word);
@@ -73,13 +75,15 @@ class rv32i_random_seq extends uvm_sequence #(rv32i_instr_txn);
     end
     $fclose(fd);
 
-    if (words.size() == 0)
+    if (words.size() == 0) begin 
       `uvm_fatal("NOSTREAM", $sformatf("instruction stream '%s' was empty", hex_file))
+    end 
 
     `uvm_info("SEQ", $sformatf("loaded %0d instruction words from %s",
                                words.size(), hex_file), UVM_LOW)
 
-    foreach (words[i])
-      send(words[i], (i == words.size() - 1));
+    foreach (words[i]) begin 
+      send_instruction(words[i], (i == words.size() - 1));
+    end 
   endtask
 endclass

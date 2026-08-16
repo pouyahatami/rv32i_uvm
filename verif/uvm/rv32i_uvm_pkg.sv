@@ -60,7 +60,7 @@ package rv32i_uvm_pkg;
   `include "src/rv32i_instr_txn.svh"
   `include "src/rv32i_retire_txn.svh"
 
-  // ---- sequencer (typedef) and stimulus ----
+  // ---- sequencer and stimulus ----
   `include "src/rv32i_sequencer.svh"
   `include "src/rv32i_random_seq.svh"
 
