@@ -26,16 +26,13 @@
 // suppressed, and the done event fires so the test finishes rather than
 // waiting for a sentinel that will never arrive.
 // ===========================================================================
+// Create a specialized analysis implementation macro
 `uvm_analysis_imp_decl(_retire)
 
-class rv32i_scoreboard extends uvm_component;
+class rv32i_scoreboard extends uvm_scoreboard;
   `uvm_component_utils(rv32i_scoreboard)
 
-  // SENTINEL_VAL/SENTINEL_REG are package-scope now (src/rv32i_uvm_defs.svh) --
-  // the coverage collector recognises the same marker.
-
-  // Reference trace, loaded from stream_trace.txt in build_phase. Queues
-  // rather than fixed arrays so the trace length is whatever was generated.
+  // Reference trace, loaded from stream_trace.txt in build_phase. 
   bit [31:0] ref_pc    [$];
   bit [31:0] ref_instr [$];
   bit [4:0]  ref_rd    [$];
@@ -50,6 +47,11 @@ class rv32i_scoreboard extends uvm_component;
   bit store_checking;
 
   uvm_analysis_imp_retire #(rv32i_retire_txn, rv32i_scoreboard) retire_export;
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+    retire_export = new("retire_export", this);
+  endfunction
 
   int unsigned num_checked;
   int unsigned num_mismatches;
@@ -66,48 +68,44 @@ class rv32i_scoreboard extends uvm_component;
   // to matter (~9 retirements, all reported as TRACE_OVERRUN).
   bit finished;
 
-  function new(string name, uvm_component parent);
-    super.new(name, parent);
-    retire_export = new("retire_export", this);
-  endfunction
-
-  // Architecturally-stored bits for a given store width. funct3 000 = SB,
-  // 001 = SH, 010 = SW; anything else is not a legal store and is treated
-  // as full width so a decode bug shows up as a data mismatch rather than
-  // being masked away to equality.
+  //Mask the word accordingly based on the funct3 value (1byte 2byte 4byte store )
   function automatic bit [31:0] store_mask(bit [2:0] funct3);
     case (funct3)
-      3'b000:  return 32'h0000_00FF;
-      3'b001:  return 32'h0000_FFFF;
-      default: return 32'hFFFF_FFFF;
+      3'b000:  return 32'h0000_00FF; //SB
+      3'b001:  return 32'h0000_FFFF; //SH
+      default: return 32'hFFFF_FFFF; //SW
     endcase
   endfunction
 
   function void build_phase(uvm_phase phase);
     int    fd, code, n_short;
-    int    pc, instr, rd, wdata, rw, sv, saddr, sdata;
-    string trace_file, line;
+    bit [31:0] pc, instr, wdata, saddr, sdata;
+    bit [4:0]  rd;
+    bit        rw, svalid;
+    string     trace_file, line;
     super.build_phase(phase);
 
+    // Initializing the scoreboard state 
     num_checked    = 0;
     num_mismatches = 0;
     ref_len        = 0;
-    desynced       = 1'b0;
+    desynced       = 1'b0; // PC or instruction stream no longer aligns with Spike
     n_short        = 0;
     finished       = 1'b0;
 
-    if (!$value$plusargs("TRACE=%s", trace_file))
+    if (!$value$plusargs("TRACE=%s", trace_file)) begin 
       trace_file = "stream_trace.txt";
+    end 
 
     fd = $fopen(trace_file, "r");
-    if (fd == 0)
+    if (fd == 0) begin 
       `uvm_fatal("NOTRACE",
         $sformatf("cannot open reference trace '%s' -- generate it with verif/spike/gen_stream.py",
                   trace_file))
+    end 
 
-    // Columns: pc instr rd wdata regwrite store_valid store_addr store_data.
-    // Read whole lines and $sscanf them rather than $fscanf'ing the stream
-    // directly: $sscanf reports how many fields it assigned, which is what
+    // Spike Columns: pc instr rd wdata regwrite store_valid store_addr store_data.
+    // $sscanf reports how many fields it assigned, which is what
     // distinguishes a current 8-column row from a 5-column one written
     // before store checking existed, and lets comment lines fall out as a
     // zero-field match. It also means the discard path needs no scratch
@@ -115,18 +113,18 @@ class rv32i_scoreboard extends uvm_component;
     // still needed for the messages below.
     while ($fgets(line, fd) != 0) begin
       code = $sscanf(line, "%h %h %d %h %d %d %h %h",
-                     pc, instr, rd, wdata, rw, sv, saddr, sdata);
+                     pc, instr, rd, wdata, rw, svalid, saddr, sdata);
       if (code == 5 || code == 8) begin
         if (code == 5) begin
           n_short++;
-          sv = 0; saddr = 0; sdata = 0;
+          svalid = 0; saddr = 0; sdata = 0;
         end
         ref_pc.push_back(pc);
         ref_instr.push_back(instr);
-        ref_rd.push_back(rd[4:0]);
+        ref_rd.push_back(rd);
         ref_wdata.push_back(wdata);
-        ref_rw.push_back(rw[0]);
-        ref_sv.push_back(sv[0]);
+        ref_rw.push_back(rw);
+        ref_sv.push_back(svalid);
         ref_saddr.push_back(saddr);
         ref_sdata.push_back(sdata);
         ref_len++;
