@@ -9,12 +9,10 @@
 //   regwrite     - set if this instruction wrote a register
 //   store_valid  - set if this instruction was a store
 //   store_addr   - the address it wrote
-//   store_data   - the full 32-bit register value; only the low byte or
-//                  halfword is architecturally stored for SB/SH, so mask by
-//                  store_funct3 before comparing (see the scoreboard)
+//   store_data   - the full 32-bit register value;
 //   store_funct3 - store width: 000 = SB, 001 = SH, 010 = SW
 // ===========================================================================
-class rv32i_retire_txn extends uvm_sequence_item;
+class rv32i_retire_txn extends uvm_object;
   bit [31:0] pc;
   bit [31:0] instr;
   bit [4:0]  rd;
