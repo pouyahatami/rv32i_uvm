@@ -9,15 +9,9 @@ for why the reference model is Spike.
 
 ## Status
 
-**This environment has never been run.** No simulator available during its
-construction supported UVM, so it has been read carefully and elaborated
-against nothing. Treat it as untested code, and expect the first run to fail
-on something mechanical.
-
-That is worth taking seriously here specifically. `docs/JOURNAL.md` records
-four real bugs in this project that survived careful reading, two of them in
-RTL that had passed a clean `slang` elaboration. Elaboration-clean was never
-correctness, and this code has not had even that.
+Validated with Questa Altera Starter FPGA Edition 2025.2 on Windows: the
+checked-in stream completes 133 of 133 reference retirements with zero UVM
+warnings, errors, or fatals.
 
 ## Option A: Questa
 
@@ -43,9 +37,7 @@ at simulation time. That is a side effect of the reference model being Spike:
 the program has to be generated wherever the reference trace is generated, and
 Spike cannot be called from inside the simulator.
 
-So this should run on Starter. It has not been confirmed on a Starter licence,
-and `run_questa.do` prints a specific message if a licence checkout fails so
-that case is not mistaken for a code error.
+This flow is confirmed on Questa Altera Starter FPGA Edition 2025.2.
 
 **This is a constraint to preserve deliberately.** The two most natural next
 steps below, constrained-random generation and functional coverage, both
@@ -62,7 +54,7 @@ Free, no licence, and the environment was originally written against it.
    **UVM** option. Any offered UVM version works: this environment only uses
    constructs stable since UVM 1.1 (`uvm_component_utils`, `uvm_object_utils`,
    the sequencer/driver/monitor base classes, `uvm_analysis_port`,
-   `uvm_analysis_imp_decl`).
+   `uvm_analysis_imp`).
 3. Add the source files in this order. Dependencies flow top to bottom:
    `rv32i_pkg.sv` first because everything imports it, `retire_if.sv` before
    the UVM package that declares `virtual retire_if.MON`, and
@@ -73,7 +65,7 @@ rtl/rv32i_pkg.sv     rtl/cells.sv        rtl/regfile.sv     rtl/alu.sv
 rtl/extend.sv        rtl/retire_if.sv    rtl/controller.sv  rtl/hazard_unit.sv
 rtl/csr_file.sv      rtl/clint.sv        rtl/uart_tx.sv     rtl/mem_bus.sv
 rtl/datapath.sv      rtl/debug_fsm.sv    rtl/riscv_pipe.sv  rtl/dmem.sv
-rtl/imem.sv          rtl/top.sv
+rtl/imem.sv          rtl/reset_sync.sv   rtl/top.sv
 verif/uvm/rv32i_if.sv           verif/uvm/mem_backdoor_if.sv
 verif/uvm/mem_backdoor_bind.sv  verif/uvm/rv32i_uvm_pkg.sv
 verif/uvm/tb_uvm_top.sv
@@ -109,23 +101,21 @@ to run, and must be changed as a pair.
 ## What success looks like
 
 ```
-UVM_INFO ... [SCOREBOARD] loaded 187 reference retirements from stream_trace.txt (store checking on)
+UVM_INFO ... [SCOREBOARD] loaded 133 reference retirements from stream_trace.txt
 UVM_INFO ... [DRIVER] backdoor-loaded 147 instruction words
-UVM_INFO ... [SCOREBOARD] sentinel retired -- 187 instructions checked, 0 mismatches
-UVM_INFO ... [TEST] DONE -- 187 of 187 retirements checked, 0 mismatches, store checking on
+UVM_INFO ... [SCOREBOARD] sentinel retired -- 133 instructions checked, 0 mismatches
+UVM_INFO ... [TEST] DONE -- 133 of 133 retirements checked, 0 mismatches
 UVM_INFO ... [TEST] *** UVM TEST PASSED ***
 RV32I_UVM_VERDICT: PASS
 ```
 
 Things worth reading rather than skimming past:
 
-- **`store checking OFF`** means `stream_trace.txt` predates the store columns
-  and every store in the run went unverified. Regenerate the trace.
-- **`[DESYNC]`** means the retiring PC or instruction stopped matching the
-  reference. The trace is indexed by retirement count, so checking stops at the
-  first divergence rather than emitting hundreds of meaningless follow-on
-  errors. The first `[PC_MISMATCH]` or `[INSTR_MISMATCH]` above it is the one
-  to look at.
+- **`[BADTRACE]`** means `stream_trace.txt` is malformed or predates the store
+  columns, so the run stops immediately. Regenerate the trace.
+- **`[PC_MISMATCH]`, `[INSTR_MISMATCH]`, or `[TRACE_OVERRUN]`** means the RTL
+  retirement stream diverged from the reference. Checking stops at the first
+  divergence rather than emitting hundreds of meaningless follow-on errors.
 - **`[TIMEOUT]`** means the core never retired the sentinel. Usually the
   program ran off the end of what was backdoor-loaded.
 - **`[STORE_MISMATCH]`** compares only the architecturally-stored bits, masked

@@ -8,12 +8,6 @@
 // MemWords parameter, because the tool elaborates it as if it were declared
 // inside imem.sv. This file appears only in simulation file lists, never in
 // a synthesis one, so imem.sv's synthesizable view stays clean.
-//
-// The parameter names differ across the boundary on purpose: imem.sv uses
-// MemWords, following the lowRISC style guide's UpperCamelCase rule for
-// tunable parameters, while mem_backdoor_if.sv still uses MEM_WORDS.
-// verif/uvm/ has not been through that style pass. Only the value crosses
-// here, so the mismatch is cosmetic.
 // =============================================================================
 
 bind imem mem_backdoor_if #(.MEM_WORDS(MemWords)) backdoor(.mem(RAM));

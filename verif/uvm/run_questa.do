@@ -24,7 +24,10 @@
 # stops running on Starter. That tradeoff is discussed in RUNNING.md.
 # =============================================================================
 
-set here  [file dirname [file normalize [info script]]]
+# Questa reports its executable, rather than this .do file, from [info script]
+# on some Windows installations. The documented invocation starts in this
+# directory, so pwd is the reliable source root.
+set here  [file normalize [pwd]]
 set root  [file normalize $here/../..]
 set rtl   $root/rtl
 set build $here/build
@@ -46,7 +49,7 @@ set rtl_files [list \
   $rtl/extend.sv      $rtl/retire_if.sv  $rtl/controller.sv $rtl/hazard_unit.sv \
   $rtl/csr_file.sv    $rtl/clint.sv      $rtl/uart_tx.sv    $rtl/mem_bus.sv \
   $rtl/datapath.sv    $rtl/debug_fsm.sv  $rtl/riscv_pipe.sv $rtl/dmem.sv \
-  $rtl/imem.sv        $rtl/top.sv]
+  $rtl/imem.sv        $rtl/reset_sync.sv $rtl/top.sv]
 
 set uvm_files [list \
   $here/rv32i_if.sv          $here/mem_backdoor_if.sv \
@@ -84,7 +87,7 @@ cd $build
 if {[file exists work]} { vdel -all }
 vlib work
 
-if {[catch {vlog -sv -quiet {*}$rtl_files {*}$uvm_files} msg]} {
+if {[catch {vlog -sv -mfcu -quiet {*}$rtl_files {*}$uvm_files} msg]} {
   puts "\n==== COMPILE FAILED ===="
   puts $msg
   if {[string match -nocase *svverification* $msg] ||

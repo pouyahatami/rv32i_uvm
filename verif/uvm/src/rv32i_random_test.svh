@@ -53,12 +53,11 @@ class rv32i_random_test extends uvm_test;
       `uvm_error("TIMEOUT",
         $sformatf({"no sentinel after %0d cycles -- the core retired %0d of %0d expected ",
                    "instructions and then stopped making progress"},
-                  WATCHDOG_CYCLES, env.sb.num_checked, env.sb.ref_len))
+                  WATCHDOG_CYCLES, env.sb.num_checked, env.sb.reference_count()))
 
     `uvm_info("TEST",
-      $sformatf("DONE -- %0d of %0d retirements checked, %0d mismatches, store checking %s",
-                env.sb.num_checked, env.sb.ref_len, env.sb.num_mismatches,
-                env.sb.store_checking ? "on" : "OFF"), UVM_LOW)
+      $sformatf("DONE -- %0d of %0d retirements checked, %0d mismatches",
+                env.sb.num_checked, env.sb.reference_count(), env.sb.num_mismatches), UVM_LOW)
 
     if (env.sb.num_mismatches == 0 && !timed_out)
       `uvm_info("TEST", "*** UVM TEST PASSED ***", UVM_NONE)

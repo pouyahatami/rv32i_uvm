@@ -60,7 +60,7 @@ step beyond that.
   1800.2 build) — this environment only uses UVM constructs that have
   been stable since UVM 1.1 (`uvm_component_utils`, `uvm_object_utils`,
   `uvm_sequencer`/`uvm_driver`/`uvm_monitor`, `uvm_analysis_port`,
-  `uvm_analysis_imp_decl`), so version choice shouldn't matter here.
+  `uvm_analysis_imp`), so version choice shouldn't matter here.
 
 ## 3. Paste the SystemVerilog design files
 
@@ -86,6 +86,7 @@ rtl/clint.sv
 rtl/uart_tx.sv
 rtl/mem_bus.sv
 rtl/imem.sv
+rtl/reset_sync.sv
 rtl/top.sv
 verif/uvm/mem_backdoor_if.sv
 verif/uvm/mem_backdoor_bind.sv
