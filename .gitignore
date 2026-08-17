@@ -49,5 +49,9 @@ desktop.ini
 .claude/
 .out-of-code-insights/
 
-# personal working notes -- scratch for my own study, not part of the design
+# personal working notes -- scratch for my own study, not part of the design.
+# The design itself is documented in docs/DESIGN_GUIDE.md and docs/JOURNAL.md,
+# which are tracked; everything here is teaching material written to myself.
 MyRISCVBallKnowledge.md
+docs/COURSE.html
+docs/WAVEFORMS.md
