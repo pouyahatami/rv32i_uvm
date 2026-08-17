@@ -50,7 +50,7 @@ class rv32i_random_seq extends uvm_sequence #(rv32i_instr_txn);
   endtask
 
   task body();
-    int        fd, code;
+    int        fd, fields_read;
     int        word;
     // SV queue
     bit [31:0] words[$];
@@ -70,8 +70,8 @@ class rv32i_random_seq extends uvm_sequence #(rv32i_instr_txn);
     end 
 
     while (!$feof(fd)) begin
-      code = $fscanf(fd, "%h\n", word);
-      if (code == 1) words.push_back(word);
+      fields_read = $fscanf(fd, "%h\n", word);
+      if (fields_read == 1) words.push_back(word);
     end
     $fclose(fd);
 

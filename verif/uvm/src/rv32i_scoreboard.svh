@@ -66,7 +66,7 @@ class rv32i_scoreboard extends uvm_scoreboard;
   endfunction
 
   function void build_phase(uvm_phase phase);
-    int    fd, code, line_number;
+    int    fd, fields_read, line_number;
     bit [31:0] pc, instr, wdata, saddr, sdata;
     bit [4:0]  rd;
     bit        rw, svalid;
@@ -103,9 +103,9 @@ class rv32i_scoreboard extends uvm_scoreboard;
       if ((first_token.len() >= 2) && (first_token.substr(0, 1) == "//"))
         continue;
 
-      code = $sscanf(line, "%h %h %d %h %d %d %h %h",
-                     pc, instr, rd, wdata, rw, svalid, saddr, sdata);
-      if (code == 8) begin
+      fields_read = $sscanf(line, "%h %h %d %h %d %d %h %h",
+                            pc, instr, rd, wdata, rw, svalid, saddr, sdata);
+      if (fields_read == 8) begin
         reference.pc          = pc;
         reference.instr       = instr;
         reference.rd          = rd;
@@ -118,7 +118,7 @@ class rv32i_scoreboard extends uvm_scoreboard;
       end else begin
         `uvm_fatal("BADTRACE",
           $sformatf({"malformed reference trace '%s' at line %0d: expected 8 columns, ",
-                     "parsed %0d"}, trace_file, line_number, code))
+                     "parsed %0d"}, trace_file, line_number, fields_read))
       end
     end
     $fclose(fd);
