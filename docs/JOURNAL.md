@@ -269,6 +269,23 @@ expensive kind of false positive to hand a verification engineer.
 This one is worth dwelling on because the script *reported success*. It was
 caught only by reading the actual output instead of the exit code.
 
+## What the UVM environment caught
+
+### The MEM-stage forwarding mux
+
+The MEM-stage forwarding mux forwarded `ALUResultM` unconditionally, which is
+the wrong value for a CSR read (`CsrRdataM`) and for JAL/JALR (`PCPlus4M`).
+
+It had been masked by an accident of bit numbering. `IsLoadE` was
+`ResultSrc[0]`, true for both `RESULT_MEM` and `RESULT_CSR`, so CSR reads were
+stalled rather than forwarded and the mux was never asked for the CSR value.
+Removing that aliasing exposed it, and `tb_pipe_csr` hung forever: the trap
+handler's `mepc += 4` wrote back a stale value, so `mret` returned to the
+`ecall` that trapped, and re-trapped indefinitely.
+
+The JAL/JALR half was never covered by any test and was wrong in every version
+of the file. See `FwdResultM` in `rtl/datapath.sv`.
+
 ## The style retrofit
 
 A pass against [lowRISC's Verilog Coding Style
@@ -301,13 +318,14 @@ holds the core permanently in or out of reset.
 
 ## The pattern
 
-Nine bugs above. Three were found by reading, and all three were wiring bugs
+Ten bugs above. Three were found by reading, and all three were wiring bugs
 found during construction, while the code was still warm.
 
 Every bug found after that point was found by a tool: two by an elaborator, two
-by a simulator, two by running a generator and reading its output, and two more
-were testbench defects surfaced the same way. None of the six post-construction
-bugs was found by re-reading code that had already been reviewed.
+by a simulator, two by running a generator and reading its output, one by the
+UVM environment, and two more were testbench defects surfaced the same way.
+None of the seven post-construction bugs was found by re-reading code that had
+already been reviewed.
 
 The two simulator-found bugs are the sharpest case, because both had survived
 multiple deliberate review passes over exactly the files involved, and one of
