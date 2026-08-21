@@ -81,7 +81,6 @@ module datapath (
     output logic        RegWriteM,
     output logic        RegWriteW,
     output logic        PCSrcE,
-    output logic        JumpD,
     output logic        trap_en,     // to hazard_unit.sv's flush logic
     output logic        mret_enE,    // to hazard_unit.sv's flush logic
 
@@ -119,8 +118,6 @@ module datapath (
     output logic [2:0]  MemFunct3W_retire
 );
 
-  assign JumpD = JumpD_c;
-
   // ================= Fetch =================
   logic [31:0] PCNextF, PCPlus4F, PCTargetD, PCTargetE;
   logic [31:0] mtvec_w, mepc_w; // from csr_file, declared here so the PC mux can see them
@@ -131,7 +128,7 @@ module datapath (
     else if (trap_en)    PCNextF = mtvec_w;   // exception or interrupt -- direct mode only
     else if (mret_enE)   PCNextF = mepc_w;
     else if (PCSrcE)     PCNextF = PCTargetE;
-    else if (JumpD)      PCNextF = PCTargetD;
+    else if (JumpD_c)    PCNextF = PCTargetD;
     else                 PCNextF = PCPlus4F;
   end
 

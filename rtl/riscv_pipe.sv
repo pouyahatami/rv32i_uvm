@@ -59,7 +59,7 @@ module riscv_pipe (
   logic [1:0] SelectAE, SelectBE;
   logic       StallF, StallD, FlushD, FlushE, FlushM;
   logic [4:0] Rs1D, Rs2D, Rs1E, Rs2E, RdE, RdM, RdW;
-  logic       IsLoadE, RegWriteM, RegWriteW, PCSrcE, JumpD_out;
+  logic       IsLoadE, RegWriteM, RegWriteW, PCSrcE;
   logic       trap_en, mret_enE;
 
   // Declared here (ahead of hazard_unit's instantiation below, which
@@ -87,7 +87,7 @@ module riscv_pipe (
                  .StallD      (StallD),
                  .FlushE      (FlushE),
                  .PCSrcE      (PCSrcE),
-                 .JumpD       (JumpD_out),
+                 .JumpD       (JumpD),
                  .EnterDebug  (enter_debug),
                  .ExitDebug   (exit_debug),
                  .trap_en     (trap_en),
@@ -136,7 +136,6 @@ module riscv_pipe (
              .RdM           (RdM), .RdW(RdW),
              .RegWriteM     (RegWriteM), .RegWriteW(RegWriteW),
              .PCSrcE        (PCSrcE),
-             .JumpD         (JumpD_out),
              .trap_en       (trap_en),
              .mret_enE      (mret_enE),
              .EnterDebug    (enter_debug), .ExitDebug(exit_debug),

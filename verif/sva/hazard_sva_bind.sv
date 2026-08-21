@@ -47,7 +47,7 @@ bind riscv_pipe hazard_sva u_hazard_sva (
     .FlushM    (FlushM),
 
     .PCSrcE    (PCSrcE),
-    .JumpD     (JumpD_out),
+    .JumpD     (JumpD),
     .EnterDebug(enter_debug),
     .ExitDebug (exit_debug),
     .trap_en   (trap_en),
