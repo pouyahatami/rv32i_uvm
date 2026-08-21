@@ -123,7 +123,9 @@ Things worth reading rather than skimming past:
   was compared.
 
 A `[PC_MISMATCH]` or `[REG_MISMATCH]` is either a real RTL bug or a bug in this
-environment. Given it has never run, assume the second until shown otherwise.
+environment. Rule out the environment first: re-run the seed, confirm
+`stream.hex` and `stream_trace.txt` were generated together, and check the
+retirement index against the trace before suspecting the core.
 
 ## Deliberately not done
 

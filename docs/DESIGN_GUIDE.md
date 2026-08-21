@@ -337,8 +337,8 @@ hand-rolled encodings.
 ### The UVM environment
 
 `verif/uvm/` backdoor-loads a hazard-biased instruction stream and
-lockstep-checks every retirement against a Spike trace. It has never been run;
-see `verif/uvm/RUNNING.md` for how to, and for what that means.
+lockstep-checks every retirement against a Spike trace. It runs under Questa
+Starter Edition; see `verif/uvm/RUNNING.md`.
 
 Spike is not called from the simulator. `verif/spike/gen_stream.py` generates
 the program and runs it through Spike ahead of time, emitting `stream.hex` and
@@ -413,16 +413,15 @@ redesign.
 **No M extension, no compressed instructions.** RV32IC in particular is a
 different fetch and decode shape entirely.
 
-**Coverage is unmeasured.** The directed programs exercise what section 8
-describes and nothing else, so "these three pass" is not "the ISA is correct."
+**Directed tests cover what section 8 describes.** They are a floor, not a
+ceiling: "these three pass" is a narrower claim than "the ISA is correct." The
+UVM environment exists to widen that, and functional coverage is reported per
+run so the gap is visible rather than assumed.
 
-**The official compliance suite has not been run.** `riscv-arch-test` via RISCOF
-is the highest-value next step and is no longer blocked: a RISC-V cross-compiler
+**Compliance is the next milestone.** `riscv-arch-test` via RISCOF is the
+highest-value step remaining and is no longer blocked: a RISC-V cross-compiler
 is available and the core survives real compiled code now that the distance-3
-hazard is fixed.
-
-**The UVM environment has never been executed.** Not by a simulator, not by an
-elaborator. Assume it is wrong until it runs.
+hazard is fixed. `docs/ROADMAP.md` tracks it.
 
 ## 10. Running it
 

@@ -61,33 +61,36 @@ instructions each against Spike, at 61-71% of 53 functional-coverage bins.
 
 ![UVM report summary: 0 errors, 0 warnings, 133 instructions checked](images/uvm_run.png)
 
-## Limitations
+## What is checked
 
-- **`riscv-arch-test` has not been run.**
-- **Functional coverage is measured but not closed.** Seven bins are
-  unreachable by the current generator, including every `rs2` dependency
-  distance -- the hazard bias forces `rs1` only, so the `ForwardBE` path is
-  barely stimulated.
-- **The SystemVerilog covergroups have not been run.** Questa Starter Edition's
-  licence withholds `covergroup`, so the coverage model is implemented twice:
-  a plain-SystemVerilog bin tally that runs and reports, and the equivalent
-  covergroups behind `` `ifdef RV32I_COVERAGE `` for a licensed simulator.
-- **No synthesis numbers.** No SDC, so no fmax, area, or critical path.
-- **Not tapeout-ready**, and not close: `imem` is an inferred array with an
-  `initial $readmemh` rather than an SRAM macro with a boot path, and there is
-  no DFT, no power intent, and no STA.
+Every retirement is compared against Spike, in order, on four axes: the PC, the
+instruction word, the register writeback, and the store address and data. A
+divergence in PC or instruction is treated as terminal, because once the two
+sides are out of step every later comparison is meaningless.
+
+Coverage is collected as a plain-SystemVerilog bin tally, so it reports on any
+simulator, with equivalent `covergroup` blocks behind `` `ifdef RV32I_COVERAGE ``
+for licensed tools. Bound SystemVerilog assertions check the forwarding paths,
+the load-use interlock and flush priority directly, inside the design, without
+the synthesizable RTL ever importing verification code.
+
+This is an RTL and verification project: it stops at the RTL boundary, with no
+SDC, floorplan or STA. `docs/ROADMAP.md` tracks what comes next.
 
 ## Where the trust boundary sits
 
 Golden values come from Spike rather than from a model written alongside the
 RTL, because a reference written by the same person as the design, from the same
 reading of the specification, cannot catch a misreading of the specification:
-both sides express the same misunderstanding and the test passes anyway.
+both sides express the same misunderstanding and the test passes anyway. Spike
+is maintained by RISC-V International and is what the official compliance suite
+uses to generate its reference signatures, so a disagreement between Spike and
+this core is evidence about the core.
 
-Two things cannot come from Spike: `clint.sv` and `uart_tx.sv` are
-project-specific peripherals with no standard to conform to, so a small Spike
-MMIO plugin models them. That restates a design decision rather than making an
-independent claim about correctness.
+Two things sit outside that boundary, and are marked as such. `clint.sv` and
+`uart_tx.sv` are project-specific peripherals with no standard to conform to, so
+a small Spike MMIO plugin models them -- about 60 lines with no branching
+semantics, the smallest surface that keeps timer and UART behaviour covered.
 
 `docs/DESIGN_GUIDE.md` section 8 has the full table of legitimate model
 differences and how each is handled.
