@@ -1,31 +1,15 @@
 #!/usr/bin/env python3
-"""
-gen_golden.py -- generate a testbench's golden register/memory values by
-running its program on Spike (riscv-isa-sim), the reference RISC-V ISS.
+"""Generate a testbench's golden register/memory values by running its program on Spike.
 
-The reference is Spike rather than a model written alongside the RTL, and the
-reason is trust rather than convenience: a golden model written by the same
-person as the design, from the same reading of the specification, cannot catch
-a misreading of the specification. Both sides express the same
-misunderstanding and the test passes green carrying no information. Spike is
-maintained by RISC-V International and is the model the official compliance
-suite uses to generate its reference signatures, so a disagreement between it
-and this core is evidence about the core.
-
-Flow:
     <prog>.txt (hex words)
       -> .S with .word directives
-      -> riscv64-unknown-elf-as / -ld           ELF, .text at 0x0, entry 0x0
-      -> spike -d --debug-cmd                   run to the program's EBREAK
-      -> parse `reg 0` / `mem <addr>` output
-      -> golden_vals_*.svh                      `include`d by tb_pipe.sv
+      -> riscv64-unknown-elf-as / -ld    ELF, .text and entry at 0x0
+      -> spike -d --debug-cmd            run to the program's EBREAK
+      -> parse `reg 0` / `mem <addr>`
+      -> golden_vals_*.svh               `include`d by tb_pipe.sv
 
-Note the assembler is doing real work here beyond file format: it is an
-independent check on testgen/asm.py's hand-rolled encodings, since the ELF is
-built from the same words the RTL's imem is loaded with.
-
-See README.md in this directory for the Spike build (including the two
-platform.h constants that must be moved, and why).
+Why the reference is Spike rather than a model written alongside the RTL, and
+how to build it: see README.md in this directory.
 """
 
 import argparse
@@ -75,9 +59,11 @@ def build_elf(words, workdir, toolchain):
 
     obj = os.path.join(workdir, "prog.o")
     elf = os.path.join(workdir, "prog.elf")
+    # The assembler doubles as an independent check on testgen/asm.py's
+    # hand-rolled encodings: the ELF is built from the words imem is loaded with.
     run([f"{toolchain}as", "-march=rv32i_zicsr", "-mabi=ilp32", asm, "-o", obj])
-    # .text at 0x0 and entry 0x0 to match the core's reset vector exactly --
-    # JAL/AUIPC results are PC-dependent, so the link address is not cosmetic.
+    # .text and entry at 0x0 to match the core's reset vector. JAL/AUIPC results
+    # are PC-dependent, so the link address is not cosmetic.
     run([f"{toolchain}ld", "-m", "elf32lriscv", "-Ttext=0x0", "-e", "0x0",
          "--no-warn-rwx-segments", obj, "-o", elf])
     return elf
