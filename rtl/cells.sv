@@ -3,7 +3,6 @@
 //
 // Reusable building-block cells:
 //   - adder : 32-bit combinational adder
-//   - flopr : parameterized D flip-flop with synchronous data and async reset
 //   - mux2  : parameterized 2-to-1 mux
 //   - mux3  : parameterized 3-to-1 mux
 //   - mux4  : parameterized 4-to-1 mux (added for debug PC redirection)
@@ -27,20 +26,6 @@ module adder (
 );
 
   assign y = a + b;
-endmodule
-
-module flopr #(
-    parameter int Width = 8
-) (
-    input  logic             clk,
-    input  logic             reset,
-    input  logic [Width-1:0] d,
-    output logic [Width-1:0] q
-);
-
-  always_ff @(posedge clk, posedge reset)
-    if (reset) q <= 0;
-    else       q <= d;
 endmodule
 
 module mux2 #(
