@@ -36,7 +36,6 @@ module tb_uvm_top;
       .reset               (vif.reset),
       .debug_req_i         (1'b0),
       .dm_halt_addr_i      (32'h0),
-      .dm_exception_addr_i (32'h0),
       .debug_halted_o      (debug_halted_o),
       .WriteData           (WriteData),
       .DataAdr             (DataAdr),

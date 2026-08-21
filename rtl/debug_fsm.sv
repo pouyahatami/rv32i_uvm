@@ -19,19 +19,14 @@ module debug_fsm (
     input  logic        clk,
     input  logic        reset,
     input  logic        debug_req_i,
-    input  logic [31:0] dm_halt_addr_i,
-    input  logic [31:0] dm_exception_addr_i,
     input  logic        is_ebreak,
     input  logic        is_dret,
     input  logic [31:0] pc,
     output logic        debug_halted_o,
-    output logic        debug_mode_o,
     output logic        enter_debug,
     output logic        exit_debug,
     output logic [31:0] dpc,
-    output logic [31:0] dcsr,
-    output logic [31:0] dscratch0,
-    output logic [31:0] dscratch1
+    output logic [31:0] dcsr
 );
 
   typedef enum logic [1:0] {
@@ -41,16 +36,19 @@ module debug_fsm (
 
   state_e state;
 
-  assign enter_debug = (debug_req_i | is_ebreak) && !debug_mode_o;
-  assign exit_debug  = is_dret && debug_mode_o;
+  // Internal only. Identical to debug_halted_o -- state holds StRunning (2'b00)
+  // or StParked (2'b11) and nothing else, so both bits always agree -- but the
+  // enter/exit conditions below read more clearly against a mode name.
+  logic   debug_mode;
+
+  assign enter_debug = (debug_req_i | is_ebreak) && !debug_mode;
+  assign exit_debug  = is_dret && debug_mode;
 
   always_ff @(posedge clk) begin
     if (reset) begin
       state     <= StRunning;
       dpc       <= 32'h0;
       dcsr      <= 32'h0;
-      dscratch0 <= 32'h0;
-      dscratch1 <= 32'h0;
     end else begin
       unique case (state)
         StRunning: begin
@@ -74,21 +72,7 @@ module debug_fsm (
     end
   end
 
-  always_comb begin
-    unique case (state)
-      StRunning: begin
-        debug_mode_o   = state[0];
-        debug_halted_o = state[1];
-      end
-      StParked: begin
-        debug_mode_o   = state[0];
-        debug_halted_o = state[1];
-      end
-      default: begin // unreachable -- see the state-register case above
-        debug_mode_o   = 1'bx;
-        debug_halted_o = 1'bx;
-      end
-    endcase
-  end
+  assign debug_mode     = (state == StParked);
+  assign debug_halted_o = (state == StParked);
 
 endmodule

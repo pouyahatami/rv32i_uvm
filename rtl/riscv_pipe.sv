@@ -34,7 +34,6 @@ module riscv_pipe (
     // Debug interface
     input  logic        debug_req_i,
     input  logic [31:0] dm_halt_addr_i,
-    input  logic [31:0] dm_exception_addr_i,
     output logic        debug_halted_o
 );
 
@@ -67,7 +66,7 @@ module riscv_pipe (
   // instantiation -- SystemVerilog module scoping makes either position
   // legal, but slang (unlike Icarus Verilog) requires textual
   // declare-before-use ordering; same fix as ResultW in datapath.sv.
-  logic        debug_mode_o, enter_debug, exit_debug;
+  logic        enter_debug, exit_debug;
 
   hazard_unit hu(.RegWriteM   (RegWriteM),
                  .RegWriteW   (RegWriteW),
@@ -96,27 +95,22 @@ module riscv_pipe (
                  .FlushM      (FlushM));
 
   // ---- debug_fsm, fed EX-stage signals ----
-  // (debug_mode_o/enter_debug/exit_debug declared above, ahead of hazard_unit)
-  logic [31:0] dpc, dcsr, dscratch0, dscratch1;
+  // (enter_debug/exit_debug declared above, ahead of hazard_unit)
+  logic [31:0] dpc, dcsr;
   logic [31:0] PCE;
   logic        is_ebreakE, is_dretE;
 
   debug_fsm debug_fsm_inst(.clk                 (clk),
                            .reset               (reset),
                            .debug_req_i         (debug_req_i),
-                           .dm_halt_addr_i      (dm_halt_addr_i),
-                           .dm_exception_addr_i (dm_exception_addr_i),
                            .is_ebreak           (is_ebreakE),
                            .is_dret             (is_dretE),
                            .pc                  (PCE),
                            .debug_halted_o      (debug_halted_o),
-                           .debug_mode_o        (debug_mode_o),
                            .enter_debug         (enter_debug),
                            .exit_debug          (exit_debug),
                            .dpc                 (dpc),
-                           .dcsr                (dcsr),
-                           .dscratch0           (dscratch0),
-                           .dscratch1           (dscratch1));
+                           .dcsr                (dcsr));
 
   // ---- retirement interface, tapped by the UVM monitor ----
   retire_if retire(.clk(clk), .reset(reset));

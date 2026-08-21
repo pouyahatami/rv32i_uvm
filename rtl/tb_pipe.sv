@@ -62,7 +62,7 @@
 
 module tb_pipe_hazard;
   logic clk = 0, reset;
-  logic [31:0] dm_halt_addr_i = 32'h0, dm_exception_addr_i = 32'h0;
+  logic [31:0] dm_halt_addr_i = 32'h0;
   logic debug_halted_o;
   logic [31:0] WriteData, DataAdr;
   logic MemWrite;
@@ -70,7 +70,7 @@ module tb_pipe_hazard;
   top #(.TestFile("riscvtest_pipe.txt")) dut(
       .clk(clk), .reset(reset),
       .debug_req_i(1'b0),
-      .dm_halt_addr_i(dm_halt_addr_i), .dm_exception_addr_i(dm_exception_addr_i),
+      .dm_halt_addr_i(dm_halt_addr_i),
       .debug_halted_o(debug_halted_o),
       .WriteData(WriteData), .DataAdr(DataAdr), .MemWrite(MemWrite));
 
@@ -175,7 +175,6 @@ module tb_pipe_debug;
   logic [31:0] dm_halt_addr_i = 32'h0000000C;  // the dret stub, same address
                                                  // convention as the original
                                                  // (unmodified) tb_debug.sv
-  logic [31:0] dm_exception_addr_i = 32'h0;
   logic debug_halted_o;
   logic [31:0] WriteData, DataAdr;
   logic MemWrite;
@@ -184,7 +183,7 @@ module tb_pipe_debug;
   top #(.TestFile("riscvtest_pipe_debug.txt")) dut(
       .clk(clk), .reset(reset),
       .debug_req_i(debug_req_i),
-      .dm_halt_addr_i(dm_halt_addr_i), .dm_exception_addr_i(dm_exception_addr_i),
+      .dm_halt_addr_i(dm_halt_addr_i),
       .debug_halted_o(debug_halted_o),
       .WriteData(WriteData), .DataAdr(DataAdr), .MemWrite(MemWrite));
 
@@ -296,7 +295,7 @@ module tb_pipe_csr;
   // more direct check than relying solely on x26's readback value.
   // ===========================================================================
   logic clk = 0, reset;
-  logic [31:0] dm_halt_addr_i = 32'h0, dm_exception_addr_i = 32'h0;
+  logic [31:0] dm_halt_addr_i = 32'h0;
   logic debug_halted_o;
   logic [31:0] WriteData, DataAdr;
   logic MemWrite;
@@ -306,7 +305,7 @@ module tb_pipe_csr;
   top #(.TestFile("riscvtest_pipe_csr.txt")) dut(
       .clk(clk), .reset(reset),
       .debug_req_i(1'b0),
-      .dm_halt_addr_i(dm_halt_addr_i), .dm_exception_addr_i(dm_exception_addr_i),
+      .dm_halt_addr_i(dm_halt_addr_i),
       .debug_halted_o(debug_halted_o),
       .WriteData(WriteData), .DataAdr(DataAdr), .MemWrite(MemWrite),
       .uart_tx_byte_o(uart_tx_byte_o), .uart_tx_valid_o(uart_tx_valid_o));

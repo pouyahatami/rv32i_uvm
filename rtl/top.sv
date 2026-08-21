@@ -22,7 +22,6 @@ module top #(
     input  logic        reset,
     input  logic        debug_req_i,
     input  logic [31:0] dm_halt_addr_i,
-    input  logic [31:0] dm_exception_addr_i,
     output logic        debug_halted_o,
     output logic [31:0] WriteData,
     output logic [31:0] DataAdr,
@@ -57,7 +56,6 @@ module top #(
                     .mtip_i              (mtip),
                     .debug_req_i         (debug_req_i),
                     .dm_halt_addr_i      (dm_halt_addr_i),
-                    .dm_exception_addr_i (dm_exception_addr_i),
                     .debug_halted_o      (debug_halted_o));
 
   imem #(.TestFile(TestFile)) imem (.a(PC), .rd(Instr));
