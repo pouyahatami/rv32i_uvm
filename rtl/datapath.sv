@@ -3,51 +3,14 @@
 //
 // 5-stage pipelined RV32I datapath: IF -> ID -> EX -> MEM -> WB.
 //
-// Owns the two register-like blocks, regfile.sv and csr_file.sv, and all
-// four pipeline registers. Control comes in pre-decoded from controller.sv
-// as an id_ex_ctrl_t bundle; forwarding/stall/flush decisions come in from
-// hazard_unit.sv. See docs/DESIGN_GUIDE.md for the stage-by-stage walk.
+// Owns regfile.sv, csr_file.sv and all four pipeline registers. Control
+// arrives pre-decoded from controller.sv as an id_ex_ctrl_t bundle; forwarding,
+// stall and flush decisions arrive from hazard_unit.sv. EX does more than run
+// the ALU: it also holds the CSR read-modify-write, exception and interrupt
+// detection, and the trap/mret PC redirect.
 //
-// EX-stage work that is not just "run the ALU":
-//   - CSR read-modify-write for CSRRW/S/C, in a small dedicated mux rather
-//     than the main ALU. CSRRC needs an AND-with-inverted-operand that the
-//     ALU has no control code for, and adding one would grow a shared
-//     resource to solve a one-instruction problem.
-//   - exception detection: illegal instruction (decoded in controller.sv),
-//     ecall, and misaligned load/store address, which is computed here
-//     because it needs ALUResultE.
-//   - timer-interrupt detection, gated by validE (below).
-//   - trap/mret PC redirect, above PCSrcE/JumpD in the fetch mux.
-//
-// `validE` is a 1-bit register, separate from ctrlE, that is 0 exactly when
-// this cycle's ID/EX load was a flush-inserted bubble (FlushE or reset).
-// ctrlE's fields already default to "do nothing" on a bubble
-// (ID_EX_CTRL_BUBBLE), so exception detection does not strictly need the
-// gate. The timer interrupt does: its condition depends on global
-// mstatus/mie/mip state rather than on what is in EX, so without validE an
-// interrupt landing on a bubble cycle right after a flush would capture
-// mepc = 0 (or a stale PCE) instead of a real, resumable address.
-//
-// validE is carried through EX/MEM and MEM/WB as validM/validW, the same
-// shape InstrE/InstrM/InstrW use, and surfaces on retire_if.sv as
-// ValidW_retire. That is the signal a monitor must gate on, and it is not
-// derivable from InstrW: a real program can contain a genuine ADDI x0,x0,0,
-// bit-identical to a flush-inserted bubble, so instruction-word matching
-// cannot separate the two. validW is 0 if and only if the WB slot was
-// squashed, whatever value landed in it.
-//
-// The MEM/WB stage also carries MemWriteW/StoreAddrW/StoreDataW/
-// MemFunct3W. Those exist purely so retire_if.sv can present a store
-// alongside the retirement it belongs to; see the retirement-outputs block
-// at the bottom of this file.
-//
-// `validD` (IF/ID) is the fetch-side half of the same idea: 0 until a real
-// fetch has actually landed in Decode, and validE is loaded from it rather
-// than from a constant 1. Without it, the first clock edge after reset
-// deasserts loads validE = 1 from a Decode stage still holding the
-// reset-cleared bubble, and that bubble is announced on retire_if as a
-// retirement at PCW = 0xfffffffc -- putting every real retirement one slot
-// late. Found by the UVM environment lockstep comparison against Spike.
+// docs/DESIGN_GUIDE.md has the stage-by-stage walk, the trap priority table,
+// and why the validE/validM/validW chain exists.
 // =============================================================================
 
 import rv32i_pkg::*;
@@ -111,7 +74,7 @@ module datapath (
     output logic [4:0]  RdW_retire,
     output logic [31:0] ResultW_retire,
     output logic        RegWriteW_retire,
-    output logic        ValidW_retire,      // see validE/validM/validW note above
+    output logic        ValidW_retire,      // non-bubble retirement; see DESIGN_GUIDE.md
     output logic        MemWriteW_retire,   // store side of the same retirement
     output logic [31:0] StoreAddrW_retire,
     output logic [31:0] StoreDataW_retire,
@@ -182,7 +145,7 @@ module datapath (
   id_ex_ctrl_t ctrlE;
   logic [2:0]  funct3E;
   logic [31:0] RD1E, RD2E, PCPlus4E, ImmExtE, InstrE;
-  logic        validE; // 0 only on a flush-inserted bubble -- see file header
+  logic        validE; // 0 only on a flush-inserted bubble (DESIGN_GUIDE.md)
 
   always_ff @(posedge clk, posedge reset)
     if (reset || FlushE) begin
@@ -278,6 +241,10 @@ module datapath (
   // bit positions either way, only the interpretation differs.
   assign csr_operandE = ctrlE.csr_use_imm ? {27'b0, Rs1E} : SrcAE_reg;
 
+  // A dedicated mux rather than the main ALU: CSRRC needs an
+  // AND-with-inverted-operand that the ALU has no control code for, and adding
+  // one would grow a shared resource to serve a single instruction.
+  //
   // unique case: ctrlE.csr_op == funct3[1:0], and controller.sv only ever
   // sets is_csr (which gates whether this mux's output is used at all) for
   // the three legal RW/RS/RC encodings -- the default covers the 4th,
@@ -335,7 +302,7 @@ module datapath (
     end
   end
 
-  // ---- timer interrupt (gated by validE -- see file header) ----
+  // ---- timer interrupt (gated by validE -- DESIGN_GUIDE.md) ----
   logic timer_intE;
   assign timer_intE = validE & mstatus_mieE & mie_mtieE & mtip_i;
 
@@ -394,7 +361,7 @@ module datapath (
   logic [31:0] ALUResultM_r, WriteDataM_r, PCPlus4M, InstrM;
   logic [1:0]  ResultSrcM;
   logic [31:0] CsrRdataM;
-  logic        validM; // validE, one stage later -- see validE/validM/validW note above
+  logic        validM; // validE, one stage later
 
   // FlushM (an input, driven by hazard_unit.sv from EnterDebug | trap_en)
   // squashes this instruction's own commit for two reasons: EnterDebug
@@ -449,13 +416,11 @@ module datapath (
   logic [31:0] StoreAddrW, StoreDataW;
   logic [2:0]  MemFunct3W;
   logic        MemWriteW;
-  logic        validW; // validM, one stage later -- see validE/validM/validW note above.
-                        // This is the signal a UVM monitor should actually gate on, NOT
-                        // "InstrW != NOP_INSTR" -- a real program can legally contain a
-                        // real ADDI x0,x0,0 (bit-identical to a flush-inserted bubble), so
-                        // instruction-word matching can't tell the two apart. validW can:
-                        // it's 0 only when this WB-stage slot was squashed, never based on
-                        // what value happened to land in it.
+  // validM one stage later, and the signal a monitor must gate on -- NOT
+  // "InstrW != NOP_INSTR". A real program can contain a genuine ADDI x0,x0,0,
+  // bit-identical to a flush-inserted bubble; validW is 0 only when the slot
+  // was squashed, whatever value landed in it.
+  logic        validW;
 
   always_ff @(posedge clk, posedge reset)
     if (reset) begin
