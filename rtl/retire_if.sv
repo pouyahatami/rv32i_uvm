@@ -2,11 +2,9 @@
 // retire_if.sv
 //
 // Commit/retire interface: the boundary the UVM monitor taps to observe one
-// record per retiring instruction. Modelled on the commit_if.sv pattern used
-// by UVM-based RISC-V verification environments (gopro-uvm-rtl-verification's
-// RISC-V-CPU-Core-UVM-Based-ISA-Compliance-Verification exposes
-// pc/insn/rd/val/commit_valid at exactly this boundary), and consumed by
-// rv32i_monitor in verif/uvm/rv32i_uvm_pkg.sv.
+// record per retiring instruction. It follows the usual commit-interface shape
+// for RISC-V verification environments -- pc, instruction, rd, value, valid --
+// and is consumed by rv32i_monitor.
 //
 // Bundling these as an `interface` rather than loose wires means a monitor
 // connects with one handle instead of ten individual signal names kept in

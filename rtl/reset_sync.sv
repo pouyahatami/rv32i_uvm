@@ -5,9 +5,10 @@
 //
 // WHY THIS EXISTS, AND WHY THE ANSWER IS NOT "USE A SYNCHRONOUS RESET"
 //
-// Every sequential block in this core resets on `always_ff @(posedge clk,
-// posedge reset)` -- an asynchronous reset. That is not a mistake, and it is
-// not the thing that was wrong. Asynchronous reset assertion is standard ASIC
+// Every resetting sequential block in this core -- with one exception noted
+// below -- uses `always_ff @(posedge clk, posedge reset)`, an asynchronous
+// reset. That is not a mistake, and it is not the thing that was wrong.
+// Asynchronous reset assertion is standard ASIC
 // practice for a good reason: it works with no clock. At power-up, during a
 // PLL relock, or in any clock-gated state, a synchronous reset cannot reach a
 // single flip-flop, because a synchronous reset is just data on the D pin and
@@ -42,6 +43,9 @@
 // synchronizer at the top is sufficient. A multi-clock design needs one of
 // these per domain, each clocked by that domain's clock -- a reset
 // synchronized to the wrong clock is no better than an unsynchronized one.
+//
+// THE EXCEPTION: debug_fsm.sv resets synchronously, on `always_ff @(posedge
+// clk)`. It is the only block that does, and it should be brought in line.
 // =============================================================================
 
 module reset_sync #(

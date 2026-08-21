@@ -5,18 +5,10 @@
 //   - adder : 32-bit combinational adder
 //   - mux2  : parameterized 2-to-1 mux
 //   - mux3  : parameterized 3-to-1 mux
-//   - mux4  : parameterized 4-to-1 mux (added for debug PC redirection)
+//   - mux4  : parameterized 4-to-1 mux
 //
-// UNCHANGED by the RV32I extension — the new muxes needed (SrcA select
-// for AUIPC, PC-target base select for JALR) reuse mux2, and resultmux
-// now uses mux4 (already existed for the debug PC redirect) instead of
-// mux3. No new cell types were needed.
-//
-// STYLE (lowRISC Verilog Coding Style): tunable parameters use UpperCamelCase
-// (Width, not WIDTH) -- callers all pass it positionally (e.g. mux3 #(32)),
-// which the guide's own instantiation rule explicitly allows for a single,
-// obvious parameter like a register width, so this rename needed no update
-// at any call site.
+// Width is passed positionally at every call site (e.g. mux3 #(32)), which the
+// lowRISC style guide allows for a single, obvious parameter like a bus width.
 // =============================================================================
 
 module adder (

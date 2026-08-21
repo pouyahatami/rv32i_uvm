@@ -27,16 +27,12 @@
 //
 // The bypass below closes it: an ID read that targets the register being
 // written this cycle returns the write data directly. (Harris & Harris solve
-// the same problem by clocking the write on the FALLING edge so the write
-// lands mid-cycle, before the ID read samples it. The bypass is preferred
-// here -- same behaviour, but no second clock edge, which keeps this
+// the same problem by clocking the write on the FALLING edge. The bypass is
+// preferred here -- same behaviour, but no second clock edge, which keeps this
 // synthesisable as ordinary single-edge logic.)
 //
-// This was a real bug, found the first time this core was run in an event-
-// driven simulator (Verilator): tb_pipe_hazard's own store-data-forwarding
-// case above is exactly the distance-3 pattern, and it read x10 as 0 instead
-// of 4, loading from address 0 and returning the previous test case's value.
-// See docs/JOURNAL.md.
+// Omitting it is a real bug, not a theoretical one -- docs/JOURNAL.md,
+// "Distance-3 RAW hazards read stale registers".
 // =============================================================================
 
 module regfile (

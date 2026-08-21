@@ -122,7 +122,11 @@ module datapath (
   logic [31:0] PCNextF, PCPlus4F, PCTargetD, PCTargetE;
   logic [31:0] mtvec_w, mepc_w; // from csr_file, declared here so the PC mux can see them
 
-  always_comb begin //should this not happen on posedge clk?
+  // Combinational, not clocked: this is the next-PC input to the PCF register
+  // below, not a register itself. Registering it here would insert a bubble on
+  // every redirect. Priority runs highest-first -- debug preempts a trap, a
+  // trap preempts mret, and all three preempt an ordinary branch or jump.
+  always_comb begin
     if      (EnterDebug) PCNextF = dm_halt_addr_i;
     else if (ExitDebug)  PCNextF = dpc;
     else if (trap_en)    PCNextF = mtvec_w;   // exception or interrupt -- direct mode only
@@ -418,34 +422,15 @@ module datapath (
 
   // ---- the value this MEM-stage instruction will actually write to rd ----
   //
-  // The forwarding muxes used to take ALUResultM directly. That is correct
-  // only when the instruction's result IS the ALU result. It is wrong for:
-  //
-  //   RESULT_CSR     - a CSR read writes CsrRdataM to rd, not ALUResultM.
-  //   RESULT_PCPLUS4 - JAL/JALR write the link address PCPlus4M, not the
-  //                    jump target the ALU computed.
+  // NOT ALUResultM. That is only the right value when the result IS the ALU
+  // result; a CSR read writes CsrRdataM and JAL/JALR write the link address.
   //
   // RESULT_MEM (a load) is deliberately absent: its data does not exist yet at
-  // MEM-forward time, which is precisely why hazard_unit.sv stalls instead of
-  // forwarding it. That interlock is what makes `default` safe here.
+  // MEM-forward time, which is why hazard_unit.sv stalls instead of forwarding
+  // it. That interlock is what makes `default` safe here.
   //
-  // THIS WAS A REAL BUG, and the way it hid is worth recording. IsLoadE used
-  // to be `ctrlE.ResultSrc[0]`, which is true for RESULT_MEM (2'b01) *and*
-  // RESULT_CSR (2'b11). CSR reads were therefore stalled by the load-use
-  // interlock as an accident of bit numbering, and never reached the broken
-  // forward path. Commit b27d00d removed that aliasing on the reasoning that
-  // it "would only have cost an unnecessary stall cycle, not produced a wrong
-  // answer" -- correct about the stall, wrong about the answer. With the
-  // accidental protection gone, a CSR read followed immediately by a dependent
-  // instruction forwarded the ALU result instead of the CSR value.
-  //
-  // The observable failure was tb_pipe_csr hanging forever: the trap handler's
-  // `csrr x24, mepc / addi x24, x24, 4 / csrw mepc, x24` sequence wrote back a
-  // stale mepc, so `mret` returned to the ECALL that trapped, which trapped
-  // again, indefinitely.
-  //
-  // The JAL/JALR case was never covered by any test and was wrong in every
-  // version of this file, including before b27d00d. It is fixed here too.
+  // Getting this wrong hung tb_pipe_csr -- docs/JOURNAL.md, "The MEM-stage
+  // forwarding mux", has the history.
   always_comb
     unique case (ResultSrcM)
       RESULT_CSR:     FwdResultM = CsrRdataM;
