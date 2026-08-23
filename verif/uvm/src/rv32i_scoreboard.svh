@@ -85,6 +85,7 @@ class rv32i_scoreboard extends uvm_scoreboard;
       trace_file = "stream_trace.txt";
     end 
 
+    // Read the Spike golden reference.
     fd = $fopen(trace_file, "r");
     if (fd == 0) begin 
       `uvm_fatal("NOTRACE",
