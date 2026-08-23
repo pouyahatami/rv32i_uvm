@@ -2,11 +2,10 @@
 
 Golden values for the self-checking RTL testbenches come from
 [Spike](https://github.com/riscv-software-src/riscv-isa-sim), RISC-V
-International's reference simulator, and so does the UVM environment's
-instruction stream and expected retirement trace.
+International's reference simulator.
+This is the UVM environment's instruction stream and expected retirement trace.
 
 ## Why
-
 A golden model written by the same person as the RTL, from the same reading of
 the specification, cannot catch a misreading of the specification. Both sides
 express the same misunderstanding, the comparison passes, and the green result
@@ -21,16 +20,9 @@ written by the same author as the RTL for *ISA semantics*, and
 same CSR addresses, same mcause encoding, same trap priority" as the RTL. For
 that milestone the golden model was a restatement of the design under test.
 
-Spike is not. It is maintained by RISC-V International and is the model the
+Spike is maintained by RISC-V International and is the model the
 official compliance suite uses to generate its reference signatures, so a
 disagreement between Spike and this core is evidence about the core.
-
-**What the swap actually changed: nothing, and that is the useful part.**
-Spike reproduces the old ISS's golden values *exactly* — all 32 registers and
-both memory words for `tb_pipe_hazard`, and all 32 registers for
-`tb_pipe_csr` including the trap counters, the `mcause` value `0x80000007`,
-and the `x25 = 0x555` interrupt-preemption marker. The old ISS was right. What
-changed is that this is now checkable rather than assumed.
 
 ## Layout
 
