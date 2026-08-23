@@ -1,8 +1,6 @@
 import asm as A
 
-# Hazard-focused directed program for the pipelined core. Every category
-# of hazard the pipeline needs to get right, each isolated so a failure
-# points at a specific piece of logic:
+# Hazard-focused directed program for the pipelined core. 
 #
 #   1. Back-to-back RAW (EX/MEM -> EX forwarding)
 #   2. Two-apart RAW (MEM/WB -> EX forwarding)
