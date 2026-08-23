@@ -95,7 +95,8 @@ for s in $(seq 1 "$NSEEDS"); do
   nerr=$(sed -n 's/^# UVM_ERROR *: *\([0-9]*\).*/\1/p' sim_$s.log | tail -1)
   nfat=$(sed -n 's/^# UVM_FATAL *: *\([0-9]*\).*/\1/p' sim_$s.log | tail -1)
   if grep -q "UVM TEST PASSED" sim_$s.log && [ "${nerr:-1}" = "0" ] && [ "${nfat:-1}" = "0" ]; then
-    checked=$(grep -oE "DONE -- [0-9]+ instructions" sim_$s.log | grep -oE "[0-9]+" | head -1)
+    # matches the test's "DONE -- N of N retirements checked" summary line
+    checked=$(grep -oE "DONE -- [0-9]+ of" sim_$s.log | grep -oE "[0-9]+" | head -1)
     cov=$(grep -oE "TOTAL \(in scope\) +[0-9]+/ *[0-9]+ bins +[0-9.]+%" sim_$s.log \
           | grep -oE "[0-9.]+%$")
     printf "seed %-4s PASS  %4s instr  cov %s\n" "$s" "${checked:-?}" "${cov:-?}"
@@ -121,6 +122,18 @@ if [ "$pass" -gt 0 ]; then
   sort holes.txt | uniq -c | awk -v n="$pass" '$1==n {print "  never hit by any seed: " $2}'
   nhole=$(sort holes.txt | uniq -c | awk -v n="$pass" '$1==n' | wc -l)
   echo "  ($nhole bins unreachable by the current generator)"
+
+  # Union coverage: bins hit by at least one seed. This, not the per-seed
+  # number, is what the regression as a whole achieved -- a bin any seed
+  # reached is a bin the environment can reach.
+  nbins=$(grep -ohE "TOTAL \(in scope\) +[0-9]+/ *[0-9]+ bins" sim_*.log \
+          | grep -oE "/ *[0-9]+" | grep -oE "[0-9]+" | head -1)
+  if [ -n "${nbins:-}" ]; then
+    echo
+    printf "=== union across %s seeds: %s/%s bins  %.2f%% ===\n" \
+      "$pass" "$((nbins - nhole))" "$nbins" \
+      "$(awk -v h="$((nbins - nhole))" -v t="$nbins" 'BEGIN{print 100*h/t}')"
+  fi
 fi
 
 [ "$fail" -eq 0 ] && [ "$genfail" -eq 0 ]
