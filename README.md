@@ -37,6 +37,8 @@ verif/wave/    waveform extraction helper.
 
 docs/          DESIGN_GUIDE.md, how the core works and why.
                JOURNAL.md, how it got built and what broke on the way.
+               BUGS.md, every defect found, its root cause, and the check
+               that now guards it.
 ```
 
 ## Status
@@ -56,8 +58,8 @@ cd verif/uvm && ./run_uvm.sh        # one seed
 cd verif/uvm && ./run_seeds.sh 10   # multi-seed regression + cross-seed coverage
 ```
 
-Ten seeds pass with zero mismatches and zero `UVM_ERROR`, checking 133-161
-instructions each against Spike, at 61-71% of 53 functional-coverage bins.
+Ten seeds pass with zero mismatches and zero `UVM_ERROR`, checking 135-161
+instructions each against Spike, at 61-71% of 59 functional-coverage bins.
 
 ![UVM report summary: 0 errors, 0 warnings, 133 instructions checked](images/uvm_run.png)
 
