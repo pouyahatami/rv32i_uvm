@@ -3,8 +3,8 @@
 Every defect this project found, what caused it, and the check that now stands
 between it and a repeat.
 
-Fifteen entries. Six are bugs in the CPU; nine are bugs in the things that were
-supposed to be checking the CPU. Both halves are here on purpose: a broken
+Eighteen entries. Six are bugs in the CPU; twelve are bugs in the things that
+were supposed to be checking the CPU. Both halves are here on purpose: a broken
 checker is the more expensive failure, because it ends with someone "fixing" a
 working design.
 
@@ -30,12 +30,17 @@ they refer to is in [DESIGN_GUIDE.md](DESIGN_GUIDE.md).
 | Reading a coverage report that was lying | 1 | V9 |
 | Writing an assertion that fired | 1 | V10 |
 | Disassembling with GNU binutils | 1 | V11 |
+| External DV review + a mutation test | 3 | V12, V13, V14 |
 
 All three "found by reading" bugs were caught during construction, while the
 code was still warm, and all three were wiring bugs. **No bug was ever found by
-re-reading code that had already been reviewed.** Twelve of fifteen were found
-by a tool, and the two most serious ones — D4 and D6 — had each survived several
-deliberate review passes over exactly the file involved.
+the author re-reading code they had already reviewed.** Fifteen of eighteen
+were found by a tool or by fresh eyes, and the two most serious RTL bugs — D4
+and D6 — had each survived several deliberate review passes over exactly the
+file involved. The last three entries extend the pattern one level up: they are
+defects in this project's *signoff mechanics*, found by an external reviewer
+who did what the author had not — deliberately broke an assertion and watched
+whether the regression noticed.
 
 That is the argument for the whole verification stack in this repo, and it is
 why the sections below spend more space on the check than on the fix.
@@ -576,6 +581,120 @@ See below.
 
 ---
 
+## V12 — Every regression flow passed with all assertions failing
+
+**Where** `verif/uvm/run_uvm.sh`, `verif/uvm/run_seeds.sh`,
+`verif/uvm/run_questa.do`
+
+**Severity** The most serious verification bug in this record. It invalidated
+the phrase "17 assertions" everywhere it had been written: an assertion whose
+failure cannot fail the regression is a source-code count, not a check.
+
+**Symptom** Demonstrated by mutation: with `assert property (1'b0)` seeded into
+`hazard_sva.sv`, Questa reported **153 assertion errors** — and the run still
+printed `*** UVM TEST PASSED ***`, `RV32I_UVM_VERDICT: PASS`, `UVM_ERROR: 0`,
+and exited 0 from every flow.
+
+**Root cause** A bound SVA failure is a *simulator* error. It never touches the
+UVM report server, so `UVM_ERROR` stays 0 and the verdict — which is computed
+from the report server's own count — stays PASS. Every pass criterion in every
+flow consulted only the UVM side. `run_seeds.sh` had even been hardened once
+before (see its comment about 13 `UVM_ERROR`s hiding behind "UVM TEST PASSED")
+and the hardening repeated the same category mistake one level down.
+`run_questa.do` was worse still: it never compiled the SVA files at all.
+
+**Found by** an external DV review that inserted a deliberately failing
+assertion and watched the regression pass anyway — the mutation test the author
+should have run and never had.
+
+**Fix** All three flows now gate on the conjunction of the UVM verdict *and*
+Questa's own error count (`# Errors: N`), which is where assertion failures
+land. `run_questa.do` compiles the SVA files. The mutation was re-run against
+the fixed flows: all three exit nonzero, seeds report
+`0 UVM_ERROR, 0 UVM_FATAL, 153 sim errors -- FAIL`.
+
+**The check now** The gates themselves, plus the mutation procedure: seed
+`a_mutation_canary: assert property (@(posedge clk) 1'b0);` into
+`hazard_sva.sv` and every flow must go red. A regression whose failure path has
+never been demonstrated is trusted, not tested — this one is now tested.
+
+---
+
+## V13 — The retirement transaction destroyed X before the scoreboard could see it
+
+**Where** `verif/uvm/src/rv32i_retire_txn.svh`, `verif/uvm/src/rv32i_monitor.svh`
+
+**Root cause** Every observed field in the retirement transaction was declared
+two-state `bit`. The interface is four-state `logic`, so the assignment in the
+monitor silently converted any X or Z to 0 — *before* the scoreboard's `!==`
+comparisons ran. `!==` looks X-safe, but it cannot see an X that was already
+erased at the class boundary: an unknown writeback compared equal to a
+legitimate zero and passed.
+
+**Fix** Two parts:
+
+- The transaction fields are now `logic`, so an X survives to the comparison
+  and fails it.
+- The monitor raises an explicit `RETIRE_X` `uvm_error` on any unknown, with
+  the qualified fields (`rd`/`wdata`, `store_*`) checked only under their valid
+  bits — an X on `wdata` when `regwrite` is 0 is don't-care, not a defect.
+
+**The fix caught something within one run of existing.** The first execution
+flagged retirements at PCs past the program's end: after the sentinel, the core
+fetches unwritten memory and "retires" X garbage until the test winds down.
+The scoreboard and coverage collector already ignored post-sentinel
+retirements, each behind its own guard; the monitor now carries the same guard
+for the same stated reason. That X-noise had always been there — this is the
+first component that could see it.
+
+**Found by** the same external review, by reading the transaction class.
+
+---
+
+## V14 — The hazard bias pointed at phantom producers
+
+**Where** `verif/spike/gen_stream.py`
+
+**Root cause** The recent-destination history was updated unconditionally:
+
+```python
+recent_rd = [rd] + recent_rd[:2]
+```
+
+But a store or a branch writes no register, and a write to x0 writes nothing.
+After any of those, the bias targeted a register the instruction never
+produced. The comment claiming the list held "the last three destination
+registers" was false, and the stated 60% recent-result bias was not the bias
+the generator delivered — some of it was spent manufacturing dependencies on
+registers with no in-flight producer, which are not hazards at all.
+
+**Fix** Only architectural producers enter the history; non-producing slots
+hold 0, and the bias falls through to a uniform pick rather than fabricating a
+dependency on x0:
+
+```python
+writes_rd = cls < 75 and rd != 0          # R-type, I-type ALU, LOAD only
+recent_rd = [rd if writes_rd else 0] + recent_rd[:2]
+```
+
+Making the bias real moved the same seed's coverage from 74.6% to 81.4% —
+the phantom dependencies had been displacing genuine ones.
+
+**The check now** `verif/spike/test_gen_stream.py` — unit tests over the pure
+`generate()` function, no Spike needed. One test independently reimplements
+producer tracking and asserts that the fraction of source reads depending on a
+*real* producer within the last three instructions stays far above the uniform
+baseline; the others pin the memory-window, reserved-register, branch-bound
+and sentinel invariants that V4/V5/V6 depend on. Run with
+`python3 -m unittest test_gen_stream`.
+
+**Found by** the same external review, by comparing the comment's claim against
+the code — the exact failure mode this file's V9 entry warns about: a
+plausible-looking bookkeeping line that changes what the regression tests
+without changing whether it passes.
+
+---
+
 # The reference model, and why it was replaced
 
 Not a bug, but the reason several of the above can be trusted once found.
@@ -618,10 +737,25 @@ Stated so the list is not read as claiming more than it does.
 - **Jumps and upper-immediates are not randomly stimulated.** D3 and half of D6
   live in exactly that gap. The coverage report prints those bins at zero rather
   than hiding them.
+- **The coverage model is hazard-oriented, not requirements-derived.** Its 59
+  bins measure what the random stimulus was built to stress — instruction
+  class, dependency distance, hazard kind, branch outcome — and nothing else.
+  There are no bins for individual ALU operations, load/store widths, operand
+  corners, CSR addresses, trap causes, interrupt timing, or debug entry/exit.
+  A percentage of that model is a statement about hazard-stimulus quality, not
+  about RV32I verification closure, and should be read (and quoted) that way.
+- **CSRs, traps, interrupts, and debug bypass the strongest checker.** The
+  retirement-lockstep comparison covers only what the generator emits; the
+  privileged-mode machinery is checked by directed end-state tests, which can
+  miss transient wrong state that converges. Bringing those features through
+  the retirement comparator (an RVFI-style widening of `retire_if`) is the
+  structural fix, tracked in [ROADMAP.md](ROADMAP.md).
 - **The covergroups have never executed.** Questa Starter Edition withholds
   `covergroup` under licence, so only the plain-SystemVerilog bin tally has run.
   The covergroups are written and unverified, and are labelled as such in
-  `rv32i_coverage.svh`.
+  `rv32i_coverage.svh`. They are also not bin-for-bin identical to the tally
+  (the tally has hazard-kind bins the covergroups lack; the covergroups have a
+  branch cross the tally lacks), so "equivalent" overstates it.
 - **No physical design.** No SDC, no floorplan, no STA, so no fmax, area or
   critical-path numbers anywhere in this repo.
 
