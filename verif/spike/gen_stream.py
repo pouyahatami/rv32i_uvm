@@ -39,6 +39,8 @@ PAD_WORDS = MAX_BRANCH_OFF // 4           # enough padding for the longest branc
 DATA_WINDOW = 256                         # bytes reachable from x1 by any
                                           # generated load/store (max offset 255)
 MAX_ADDI_IMM = 2047                       # x1 is set with a single ADDI
+BIAS_PCT = 60                             # chance a source register is a recent
+                                          # destination -- see biased_src()
 REG_INIT_REGS = range(2, 31)              # x2..x30 -- see the prologue in
 REG_INIT_WORDS = len(REG_INIT_REGS)       # generate() for why these are zeroed
 ENTRY_PC = 0x0                            # the core's reset vector
@@ -118,14 +120,41 @@ def generate(rng, num_instr):
     for off in range(0, DATA_WINDOW, 4):
         words.append(enc_s(OP_STORE, 0b010, SAFE_BASE_REG, 0, off))
 
-    last_rd = SAFE_BASE_REG
+    # The last three destination registers, most recent first.
+    #
+    # Dependency DISTANCE is what selects the mechanism under test: distance 1
+    # and 2 are the two forwarding paths, and distance 3 is the register-file
+    # read-during-write bypass -- the gap between those two mechanisms, and a
+    # real bug once (docs/BUGS.md, D4).
+    #
+    # The original version of this loop biased only rs1, and only toward the
+    # immediately preceding destination. That left distance 2 and 3 to chance
+    # and never stressed rs2 at all, which showed up in the coverage report as
+    # a permanently empty block of rs2_dist.* and x_op_rs2.* bins across every
+    # seed -- a gap in the stimulus, not in the RTL.
+    recent_rd = [SAFE_BASE_REG] * 3
+
+    def biased_src():
+        """A source register, biased toward a recent destination.
+
+        BIAS_PCT of the time this returns one of the last three destinations,
+        picking the distance uniformly so the stimulus asks for all three
+        hazard distances rather than piling onto the one that is easiest to
+        hit. The rest of the time it is uniform over x0..x30, which is what
+        keeps non-dependent instructions in the mix.
+
+        Every register it can return is architecturally defined at this point:
+        x1 is the base pointer, x2..x30 are zeroed by the prologue, and x0 is
+        hardwired. x31 is the sentinel and is deliberately unreachable here.
+        """
+        if rng.randrange(100) < BIAS_PCT:
+            return recent_rd[rng.randrange(3)]
+        return rng.randrange(31)
 
     for _ in range(num_instr):
         cls = rng.randrange(100)
-        # 40% of instructions read the previous destination, so RAW hazards show up
-        # far more often than uniform-random choice would give.
-        rs1 = last_rd if rng.randrange(100) < 40 else rng.randrange(31)
-        rs2 = rng.randrange(31)
+        rs1 = biased_src()
+        rs2 = biased_src()
         rd = rng.randrange(31)
         while rd in (SAFE_BASE_REG, SENTINEL_REG):
             rd = rng.randrange(31)
@@ -160,7 +189,7 @@ def generate(rng, num_instr):
             funct3 = 0b001 if rng.randrange(2) else 0b000
             words.append(enc_b(OP_BRANCH, funct3, rs1, rs2,
                                rng.randint(1, 3) * 16))
-        last_rd = rd
+        recent_rd = [rd] + recent_rd[:2]
 
     # Pad so a forward branch among the last few instructions lands inside the
     # program rather than in unwritten memory.
