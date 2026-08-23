@@ -94,7 +94,14 @@ for s in $(seq 1 "$NSEEDS"); do
   # reported 30/30 PASS on runs carrying 13 UVM_ERRORs each.
   nerr=$(sed -n 's/^# UVM_ERROR *: *\([0-9]*\).*/\1/p' sim_$s.log | tail -1)
   nfat=$(sed -n 's/^# UVM_FATAL *: *\([0-9]*\).*/\1/p' sim_$s.log | tail -1)
-  if grep -q "UVM TEST PASSED" sim_$s.log && [ "${nerr:-1}" = "0" ] && [ "${nfat:-1}" = "0" ]; then
+  # Questa's own error count, which is where bound-SVA assertion failures
+  # land -- they are simulator errors, NOT UVM report-server errors, so the
+  # three checks above are blind to them. Before this gate existed, a seeded
+  # always-false assertion produced 153 errors and this script still printed
+  # PASS for every seed.
+  qerr=$(sed -n 's/^# Errors: \([0-9][0-9]*\),.*/\1/p' sim_$s.log | tail -1)
+  if grep -q "UVM TEST PASSED" sim_$s.log && [ "${nerr:-1}" = "0" ] \
+     && [ "${nfat:-1}" = "0" ] && [ "${qerr:-1}" = "0" ]; then
     # matches the test's "DONE -- N of N retirements checked" summary line
     checked=$(grep -oE "DONE -- [0-9]+ of" sim_$s.log | grep -oE "[0-9]+" | head -1)
     cov=$(grep -oE "TOTAL \(in scope\) +[0-9]+/ *[0-9]+ bins +[0-9.]+%" sim_$s.log \
@@ -103,8 +110,8 @@ for s in $(seq 1 "$NSEEDS"); do
     pass=$((pass+1))
     grep -oE "never hit: [a-z0-9_.]+" sim_$s.log | sed 's/never hit: //' >> holes.txt
   else
-    printf "seed %-4s FAIL  (%s UVM_ERROR, %s UVM_FATAL, see %s)\n" \
-           "$s" "${nerr:-?}" "${nfat:-?}" "$BUILD/sim_$s.log"
+    printf "seed %-4s FAIL  (%s UVM_ERROR, %s UVM_FATAL, %s sim errors, see %s)\n" \
+           "$s" "${nerr:-?}" "${nfat:-?}" "${qerr:-?}" "$BUILD/sim_$s.log"
     fail=$((fail+1)); failed_seeds="$failed_seeds $s"
   fi
 done

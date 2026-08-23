@@ -77,8 +77,27 @@ FILES="
 #     50,000 cycles, generous by any measure, and bounds the wreckage.
 SIM_ARGS="+UVM_MAX_QUIT_COUNT=20"
 
-if [ "$1" = "-gui" ]; then
+if [ "${1:-}" = "-gui" ]; then
   "$QUESTA/win64/vsim" -L mtiUvm $SIM_ARGS tb_uvm_top -do "log -r /*; run 500us"
-else
-  "$QUESTA/win64/vsim" -c -L mtiUvm $SIM_ARGS tb_uvm_top -do "run 500us; quit -f"
+  exit 0
 fi
+
+"$QUESTA/win64/vsim" -c -L mtiUvm $SIM_ARGS tb_uvm_top -do "run 500us; quit -f" \
+    | tee run.log
+
+# The UVM verdict alone is NOT sufficient to pass. Bound SVA failures are
+# simulator errors, not UVM report-server errors: a run once carried 153
+# assertion errors while still printing "UVM TEST PASSED" and "UVM_ERROR: 0",
+# because nothing here looked at Questa's own error count. So the gate is the
+# conjunction: the UVM verdict AND a zero simulator error count, which is
+# where assertion failures land.
+qerr=$(sed -n 's/^# Errors: \([0-9][0-9]*\),.*/\1/p' run.log | tail -1)
+if ! grep -q "RV32I_UVM_VERDICT: PASS" run.log; then
+  echo "FAIL: UVM verdict missing or not PASS"; exit 1
+fi
+if [ "${qerr:-1}" != "0" ]; then
+  echo "FAIL: ${qerr:-unknown} simulator errors (assertion failures land here," \
+       "not in the UVM error count) -- see $BUILD/run.log"
+  exit 1
+fi
+echo "PASS: UVM verdict PASS, 0 simulator errors"

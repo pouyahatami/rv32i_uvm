@@ -49,7 +49,8 @@ set rtl_files [list \
   $rtl/extend.sv      $rtl/retire_if.sv  $rtl/controller.sv $rtl/hazard_unit.sv \
   $rtl/csr_file.sv    $rtl/clint.sv      $rtl/uart_tx.sv    $rtl/mem_bus.sv \
   $rtl/datapath.sv    $rtl/debug_fsm.sv  $rtl/riscv_pipe.sv $rtl/dmem.sv \
-  $rtl/imem.sv        $rtl/reset_sync.sv $rtl/top.sv]
+  $rtl/imem.sv        $rtl/reset_sync.sv $rtl/top.sv \
+  $root/verif/sva/hazard_sva.sv $root/verif/sva/hazard_sva_bind.sv]
 
 set uvm_files [list \
   $here/rv32i_if.sv          $here/mem_backdoor_if.sv \
@@ -121,19 +122,30 @@ run -all
 # script or a CI step. The count cannot be queried from TCL -- uvm_report_server
 # is a SystemVerilog class, not a simulator object.
 set verdict "NOT REACHED"
+# Simulator error count: bound-SVA assertion failures land here, not in the
+# UVM report server, so the UVM verdict alone would pass over a run whose
+# assertions all fired. Both conditions gate the exit code.
+set simerrs -1
 if {[catch {set fh [open run.log r]} openmsg] == 0} {
   foreach line [split [read $fh] "\n"] {
     if {[string match "*RV32I_UVM_VERDICT:*" $line]} {
       set verdict [string trim [lindex [split $line ":"] end]]
     }
+    if {[regexp {^# Errors: (\d+),} $line -> n]} {
+      set simerrs $n
+    }
   }
   close $fh
 }
 
-puts "\n==== verdict: $verdict ===="
-if {$verdict eq "PASS"} {
+puts "\n==== verdict: $verdict, simulator errors: $simerrs ===="
+if {$verdict eq "PASS" && $simerrs == 0} {
   quit -code 0
 } else {
+  if {$simerrs != 0} {
+    puts "assertion or other simulator errors present -- these do not appear"
+    puts "in the UVM error count, which is why they are gated separately here"
+  }
   puts "full log: [file normalize run.log]"
   quit -code 1
 }
