@@ -120,7 +120,7 @@ divergence in PC or instruction is treated as terminal, because once the two
 sides are out of step every later comparison is meaningless.
 
 Coverage is collected as a plain-SystemVerilog bin tally, so it reports on any
-simulator, with equivalent `covergroup` blocks behind `` `ifdef RV32I_COVERAGE ``
+simulator, with parallel `covergroup` blocks (written, never yet executed) behind `` `ifdef RV32I_COVERAGE ``
 for licensed tools. Bound SystemVerilog assertions check the forwarding paths,
 the load-use interlock and flush priority directly, inside the design, without
 the synthesizable RTL ever importing verification code.
