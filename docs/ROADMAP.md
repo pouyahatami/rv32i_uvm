@@ -58,11 +58,12 @@ boundary. The generator uses uniform-random operands, which essentially never
 straddle it. Biasing operands toward `INT_MIN`/`INT_MAX`/`0`/`-1` would aim at
 the corner instead of hoping for it.
 
-**Write the missing converse assertions.** `a_flushd_has_cause` and
-`a_flushe_has_cause` check that every flush has a cause. D5 was the opposite --
-a cause (`ExitDebug`) with no flush -- so those properties could not have caught
-it. `ExitDebug |-> FlushD && FlushE`, and the same for the other redirect
-sources, would close that direction. Related gaps: no properties yet for
+**Write the missing converse assertions.** *Done for the redirect sources:*
+`hazard_sva.sv` now asserts cause->effect for JumpD, mret, EnterDebug and
+ExitDebug (the D5 property), each with a cover property -- and states plainly
+that they are vacuous under the current generated stimulus, which contains no
+jump, SYSTEM or debug traffic. They go live with the stimulus items above.
+Related gaps remain: no properties yet for
 retirement validity, wrong-path retirement, PC alignment/progression, or
 "no memory write from a flushed instruction". And note the honest scope: these
 are simulation assertions -- nothing here is formally proven. The hazard unit

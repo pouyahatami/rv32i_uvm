@@ -255,8 +255,12 @@ assign FlushE = PCSrcE | lwStallD | EnterDebug | ExitDebug | trap_en | mret_enE;
   catch it, and it is worth saying why rather than listing them and moving on.
   They are written as `FlushD |-> (... || ExitDebug || ...)`: every flush must
   have a cause. This bug is the converse — a cause with no flush. The implication
-  points the wrong way. An `a_exitdebug_flushes: ExitDebug |-> FlushD && FlushE`
-  property would catch it directly and is not yet written.
+  points the wrong way. `a_exitdebug_flushes: ExitDebug |-> FlushD && FlushE`
+  now exists in `hazard_sva.sv`, alongside cause→effect properties for every
+  other redirect source — with the honest caveat, stated in the file, that the
+  generated stream contains no debug traffic yet, so under the UVM regression
+  it passes vacuously and its cover property reports so. It becomes a live
+  check the moment any bound stimulus exercises debug exit.
 
 **This bug is the reason the project runs two simulators.** Re-seeding it:
 
