@@ -72,10 +72,7 @@ Both simulators are run because they disagree about uninitialised memory, and
 one of the RTL bugs found in this project is invisible to Verilator for exactly
 that reason.
 
-![UVM environment: Spike generates the program image and expected retirements
-ahead of the run; the driver backdoor-loads the program; the monitor samples one
-transaction per retirement from a read-only retirement tap; the scoreboard
-compares against Spike in order](images/uvm_env.png)
+![UVM environment: Spike generates the program image and expected retirements ahead of the run, the driver backdoor-loads the program, the monitor samples one transaction per retirement from a read-only tap, and the scoreboard compares against Spike in order](images/uvm_env.png)
 
 The reference build on the left runs once, before simulation. The DUT on the
 right is the unmodified core -- the retirement tap is read-only and the
