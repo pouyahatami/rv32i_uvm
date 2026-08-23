@@ -37,10 +37,14 @@
 //     untested until something runs them.
 //
 // The duplication is real and is the cost of the licence, not a design
-// preference. The bin names are identical between the two so a report from
-// either is comparable, and both are sampled from the same write() call, so
-// neither can silently observe different traffic. If they ever disagree, the
-// tally is the one that has actually run.
+// preference. Both are sampled from the same write() call, so neither can
+// silently observe different traffic, and shared bin names are shared
+// spellings -- but the two models are NOT bin-for-bin identical: the tally
+// has hazard-kind bins (load_use vs alu_raw) the covergroups lack, and
+// cg_branch has a kind-by-outcome cross the tally lacks. Reconciling them is
+// part of the work of first running the covergroups. Until then every
+// coverage number this project reports comes from the tally, and only from
+// the tally.
 // -----------------------------------------------------------------------------
 //
 // WHAT IS SAMPLED, AND WHAT THAT MEASURES
