@@ -12,11 +12,47 @@ a strong claim, but it is not the same as passing the official compliance suite.
 Until that suite runs, "verified against Spike" is the accurate phrasing and
 "compliant" is not.
 
-**Close functional coverage.** Currently 61-71% of 53 bins across ten seeds.
-Seven bins are unreachable by the current generator, including every `rs2`
-dependency distance: `gen_stream.py` biases `rs1` to the previous destination
-and never biases `rs2`, so the `ForwardBE` path is barely stimulated. Fix is in
-the generator, not the RTL -- bias `rs2` on some fraction of instructions.
+**Close functional coverage.** *Mostly done.* `gen_stream.py` used to bias only
+`rs1`, and only toward the immediately preceding destination, so `rs2` was never
+stressed and dependency distances 2 and 3 were left to chance. It now biases
+both source registers toward a uniformly chosen one of the last three
+destinations (`biased_src()`, `BIAS_PCT`).
+
+Measured on the same ten seeds, before and after:
+
+| | before | after |
+|---|---|---|
+| per-seed coverage | 59-69% | 66-83% |
+| union across 10 seeds | 48/59 bins, 81.4% | **56/59 bins, 94.9%** |
+| bins no seed reached | 11 | 3 |
+
+Three bins remain unreachable, and they are all the same gap:
+`x_op_rs1.load_d{1,2,3}` -- a load whose *base* register depends on a recent
+result. Every generated load addresses off `x1`, the reserved base pointer,
+which is deliberately never a destination, because that invariant is what keeps
+generated stores off the program image (see V4 in [BUGS.md](BUGS.md)). Closing
+these needs the generator to emit a safe dependent base -- `ADDI rt, x1, off`
+followed by a load off `rt` -- which keeps the bound on the address while making
+the base a real dependency. That is the next generator change, and it must not
+be made casually: it touches the one invariant protecting the whole memory
+model.
+
+**Stimulate the jump and upper-immediate opcodes.** `gen_stream.py` emits no
+JAL, JALR, LUI or AUIPC, so the `opcode_out_of_scope` group sits at zero by
+construction. Two known bugs live in exactly that gap -- D3's spurious-stall
+case and the JAL/JALR half of D6, which was never covered by any test in any
+version of the file. This is now the largest verification hole in the project.
+
+**Corner-case ALU operands.** D1 was a sign error at the signed-overflow
+boundary. The generator uses uniform-random operands, which essentially never
+straddle it. Biasing operands toward `INT_MIN`/`INT_MAX`/`0`/`-1` would aim at
+the corner instead of hoping for it.
+
+**Write the missing converse assertions.** `a_flushd_has_cause` and
+`a_flushe_has_cause` check that every flush has a cause. D5 was the opposite --
+a cause (`ExitDebug`) with no flush -- so those properties could not have caught
+it. `ExitDebug |-> FlushD && FlushE`, and the same for the other redirect
+sources, would close that direction.
 
 **Run the covergroups.** The coverage model exists twice: a plain-SystemVerilog
 bin tally that runs everywhere, and the equivalent `covergroup` blocks behind

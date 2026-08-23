@@ -22,15 +22,17 @@ both.
 | Verification code | 1,580 lines — UVM env (12 classes), bound SVA, directed testbenches |
 | Reference model | Spike, RISC-V International's ISA simulator |
 | Directed tests | 3 self-checking testbenches, each run under 2 simulators, all passing |
-| Random regression | 10 seeds, 135–161 instructions per seed, **0 mismatches, 0 `UVM_ERROR`** |
+| Random regression | 10 seeds, 129–147 instructions per seed, **0 mismatches, 0 `UVM_ERROR`** |
 | Checked per retirement | 4 axes — PC, instruction word, register writeback, store address + data |
 | Assertions | 17 concurrent SVA properties + 10 cover properties, bound into the RTL |
-| Functional coverage | 59 in-scope bins, 61–71% per seed, every hole named in the report |
+| Functional coverage | 66–83% of 59 in-scope bins per seed; **56/59 (94.9%) union across the 10** |
+| Remaining coverage holes | 3, all the same gap, named in the report and in [ROADMAP.md](docs/ROADMAP.md) |
 | Bugs found and documented | 15 — 6 in the RTL, 9 in the verification code — see [docs/BUGS.md](docs/BUGS.md) |
 
-Numbers come from `verif/uvm/build_seeds/sim_*.log`, committed alongside the
-run. What is *not* claimed is in [docs/ROADMAP.md](docs/ROADMAP.md): no
-`riscv-arch-test` run, no jumps in the random stimulus, no physical design.
+Reproduce with `verif/uvm/run_seeds.sh 10`, which prints every figure above and
+names each unhit bin. What is *not* claimed is in
+[docs/ROADMAP.md](docs/ROADMAP.md): no `riscv-arch-test` run, no jumps in the
+random stimulus, no physical design.
 
 ## Layout
 
@@ -70,6 +72,16 @@ Both simulators are run because they disagree about uninitialised memory, and
 one of the RTL bugs found in this project is invisible to Verilator for exactly
 that reason.
 
+![UVM environment: Spike generates the program image and expected retirements
+ahead of the run; the driver backdoor-loads the program; the monitor samples one
+transaction per retirement from a read-only retirement tap; the scoreboard
+compares against Spike in order](images/uvm_env.png)
+
+The reference build on the left runs once, before simulation. The DUT on the
+right is the unmodified core -- the retirement tap is read-only and the
+program is loaded through a `bind`, so nothing in the environment reaches into
+the design.
+
 The UVM environment runs under Questa Starter Edition:
 
 ```bash
@@ -77,10 +89,21 @@ cd verif/uvm && ./run_uvm.sh        # one seed
 cd verif/uvm && ./run_seeds.sh 10   # multi-seed regression + cross-seed coverage
 ```
 
-Ten seeds pass with zero mismatches and zero `UVM_ERROR`, checking 135-161
-instructions each against Spike, at 61-71% of 59 functional-coverage bins.
+Ten seeds pass with zero mismatches and zero `UVM_ERROR`, checking 129-147
+instructions each against Spike, at 66-83% of 59 functional-coverage bins per
+seed. Across the ten, 56 of the 59 bins are hit -- 94.9%.
 
-![UVM report summary: 0 errors, 0 warnings, 133 instructions checked](images/uvm_run.png)
+The three that no seed reaches are `x_op_rs1.load_d{1,2,3}`: a load's base
+register is a dependency on a recent result. Every generated load uses `x1`, the
+reserved base pointer, which is never any instruction's destination, so the
+dependency cannot arise. That is a deliberate memory-safety invariant in
+`gen_stream.py`, not an oversight -- reaching those bins needs the generator to
+compute a base into a scratch register first, which `docs/ROADMAP.md` tracks.
+
+The regression prints each hole by name rather than leaving it inside a
+percentage, so a gap has to be argued with rather than averaged away.
+
+![UVM report summary from a single-seed run: 0 errors, 0 warnings](images/uvm_run.png)
 
 ## What is checked
 
