@@ -13,6 +13,25 @@ Runs three self-checking testbenches under both Icarus Verilog and Verilator,
 whichever are installed, and reports PASS/FAIL per testbench. All three pass on
 both.
 
+## By the numbers
+
+| | |
+|---|---|
+| Core | RV32I, 5-stage, forwarding + load-use interlock, M-mode CSRs, traps, timer interrupt, debug halt/resume |
+| Synthesizable RTL | 2,098 lines, 19 files, 25 modules |
+| Verification code | 1,580 lines — UVM env (12 classes), bound SVA, directed testbenches |
+| Reference model | Spike, RISC-V International's ISA simulator |
+| Directed tests | 3 self-checking testbenches, each run under 2 simulators, all passing |
+| Random regression | 10 seeds, 135–161 instructions per seed, **0 mismatches, 0 `UVM_ERROR`** |
+| Checked per retirement | 4 axes — PC, instruction word, register writeback, store address + data |
+| Assertions | 17 concurrent SVA properties + 10 cover properties, bound into the RTL |
+| Functional coverage | 59 in-scope bins, 61–71% per seed, every hole named in the report |
+| Bugs found and documented | 15 — 6 in the RTL, 9 in the verification code — see [docs/BUGS.md](docs/BUGS.md) |
+
+Numbers come from `verif/uvm/build_seeds/sim_*.log`, committed alongside the
+run. What is *not* claimed is in [docs/ROADMAP.md](docs/ROADMAP.md): no
+`riscv-arch-test` run, no jumps in the random stimulus, no physical design.
+
 ## Layout
 
 ```
