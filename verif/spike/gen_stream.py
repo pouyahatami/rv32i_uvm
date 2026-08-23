@@ -120,35 +120,42 @@ def generate(rng, num_instr):
     for off in range(0, DATA_WINDOW, 4):
         words.append(enc_s(OP_STORE, 0b010, SAFE_BASE_REG, 0, off))
 
-    # The last three destination registers, most recent first.
+    # The architectural producers among the last three instructions, most
+    # recent first. A slot holds the destination register if that instruction
+    # actually wrote one, else 0: stores and branches write no register, and a
+    # write to x0 writes nothing, so none of those is a producer a later
+    # instruction could depend on.
+    #
+    # Tracking that distinction matters, not just the raw rd fields. An
+    # earlier version pushed rd unconditionally, so after a store or branch
+    # the bias pointed at a register the instruction never wrote -- a phantom
+    # producer. The bias percentage the comments claimed was then not the bias
+    # the generator delivered, and the coverage distances were diluted by
+    # dependencies on registers whose "producer" produced nothing.
     #
     # Dependency DISTANCE is what selects the mechanism under test: distance 1
     # and 2 are the two forwarding paths, and distance 3 is the register-file
     # read-during-write bypass -- the gap between those two mechanisms, and a
     # real bug once (docs/BUGS.md, D4).
-    #
-    # The original version of this loop biased only rs1, and only toward the
-    # immediately preceding destination. That left distance 2 and 3 to chance
-    # and never stressed rs2 at all, which showed up in the coverage report as
-    # a permanently empty block of rs2_dist.* and x_op_rs2.* bins across every
-    # seed -- a gap in the stimulus, not in the RTL.
-    recent_rd = [SAFE_BASE_REG] * 3
+    recent_rd = [SAFE_BASE_REG, 0, 0]
 
     def biased_src():
-        """A source register, biased toward a recent destination.
+        """A source register, biased toward a recent real producer.
 
-        BIAS_PCT of the time this returns one of the last three destinations,
-        picking the distance uniformly so the stimulus asks for all three
-        hazard distances rather than piling onto the one that is easiest to
-        hit. The rest of the time it is uniform over x0..x30, which is what
-        keeps non-dependent instructions in the mix.
+        BIAS_PCT of the time this picks one of the last three slots uniformly,
+        so the stimulus asks for all three hazard distances rather than piling
+        onto the easiest one. A slot holding 0 means that instruction produced
+        nothing -- fall through to a uniform pick rather than fabricating a
+        dependency on x0, which is never a hazard.
 
-        Every register it can return is architecturally defined at this point:
-        x1 is the base pointer, x2..x30 are zeroed by the prologue, and x0 is
-        hardwired. x31 is the sentinel and is deliberately unreachable here.
+        Every register this can return is architecturally defined at this
+        point: x1 is the base pointer, x2..x30 are zeroed by the prologue, and
+        x0 is hardwired. x31 is the sentinel and is deliberately unreachable.
         """
         if rng.randrange(100) < BIAS_PCT:
-            return recent_rd[rng.randrange(3)]
+            r = recent_rd[rng.randrange(3)]
+            if r != 0:
+                return r
         return rng.randrange(31)
 
     for _ in range(num_instr):
@@ -189,7 +196,11 @@ def generate(rng, num_instr):
             funct3 = 0b001 if rng.randrange(2) else 0b000
             words.append(enc_b(OP_BRANCH, funct3, rs1, rs2,
                                rng.randint(1, 3) * 16))
-        recent_rd = [rd] + recent_rd[:2]
+
+        # cls < 75 covers exactly the classes that write a register (R-type,
+        # I-type ALU, LOAD); stores and branches, and any write to x0, push 0.
+        writes_rd = cls < 75 and rd != 0
+        recent_rd = [rd if writes_rd else 0] + recent_rd[:2]
 
     # Pad so a forward branch among the last few instructions lands inside the
     # program rather than in unwritten memory.
