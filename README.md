@@ -25,7 +25,7 @@ both.
 | Random regression | 10 seeds, 136–147 instructions per seed, **0 mismatches, 0 errors of any kind** |
 | Pass criteria | UVM verdict **and** zero simulator errors — the second gate is where assertion failures land, and it is verified by a mutation test ([BUGS.md V12](docs/BUGS.md)) |
 | Checked per retirement | 4 axes — PC, instruction word, register writeback, store address + data — plus an explicit X/unknown check |
-| Assertions | 17 concurrent SVA properties + 10 cover properties, bound into the RTL, failure-gated in every flow |
+| Assertions | 21 concurrent SVA properties + 14 cover properties, bound into the RTL, failure-gated in every flow |
 | Hazard-model coverage | 56/59 bins (94.9%) union across 10 seeds, 71–81% per seed — **a hazard-stimulus metric, not ISA closure**: the model has no bins for CSRs, traps, jumps, or operand corners |
 | Generator tests | 6 Python unit tests pinning the stream invariants the memory model depends on |
 | Bugs found and documented | 18 — 6 in the RTL, 12 in the verification code — see [docs/BUGS.md](docs/BUGS.md) |
