@@ -22,17 +22,19 @@ both.
 | Verification code | 1,580 lines — UVM env (12 classes), bound SVA, directed testbenches |
 | Reference model | Spike, RISC-V International's ISA simulator |
 | Directed tests | 3 self-checking testbenches, each run under 2 simulators, all passing |
-| Random regression | 10 seeds, 129–147 instructions per seed, **0 mismatches, 0 `UVM_ERROR`** |
-| Checked per retirement | 4 axes — PC, instruction word, register writeback, store address + data |
-| Assertions | 17 concurrent SVA properties + 10 cover properties, bound into the RTL |
-| Functional coverage | 66–83% of 59 in-scope bins per seed; **56/59 (94.9%) union across the 10** |
-| Remaining coverage holes | 3, all the same gap, named in the report and in [ROADMAP.md](docs/ROADMAP.md) |
-| Bugs found and documented | 15 — 6 in the RTL, 9 in the verification code — see [docs/BUGS.md](docs/BUGS.md) |
+| Random regression | 10 seeds, 136–147 instructions per seed, **0 mismatches, 0 errors of any kind** |
+| Pass criteria | UVM verdict **and** zero simulator errors — the second gate is where assertion failures land, and it is verified by a mutation test ([BUGS.md V12](docs/BUGS.md)) |
+| Checked per retirement | 4 axes — PC, instruction word, register writeback, store address + data — plus an explicit X/unknown check |
+| Assertions | 17 concurrent SVA properties + 10 cover properties, bound into the RTL, failure-gated in every flow |
+| Hazard-model coverage | 56/59 bins (94.9%) union across 10 seeds, 71–81% per seed — **a hazard-stimulus metric, not ISA closure**: the model has no bins for CSRs, traps, jumps, or operand corners |
+| Generator tests | 6 Python unit tests pinning the stream invariants the memory model depends on |
+| Bugs found and documented | 18 — 6 in the RTL, 12 in the verification code — see [docs/BUGS.md](docs/BUGS.md) |
 
 Reproduce with `verif/uvm/run_seeds.sh 10`, which prints every figure above and
 names each unhit bin. What is *not* claimed is in
-[docs/ROADMAP.md](docs/ROADMAP.md): no `riscv-arch-test` run, no jumps in the
-random stimulus, no physical design.
+[docs/ROADMAP.md](docs/ROADMAP.md): no `riscv-arch-test` run, no jumps or
+privileged instructions in the random stimulus, no requirements-derived
+coverage plan, no physical design.
 
 ## Layout
 
@@ -86,9 +88,17 @@ cd verif/uvm && ./run_uvm.sh        # one seed
 cd verif/uvm && ./run_seeds.sh 10   # multi-seed regression + cross-seed coverage
 ```
 
-Ten seeds pass with zero mismatches and zero `UVM_ERROR`, checking 129-147
-instructions each against Spike, at 66-83% of 59 functional-coverage bins per
-seed. Across the ten, 56 of the 59 bins are hit -- 94.9%.
+Ten seeds pass with zero mismatches, zero `UVM_ERROR`, and zero simulator
+errors, checking 136-147 instructions each against Spike, at 71-81% of the
+59-bin hazard coverage model per seed. Across the ten, 56 of the 59 bins are
+hit -- 94.9%. That number measures hazard-stimulus quality against a model
+built for the hazard machinery; it is not a claim of ISA-level coverage, which
+has no model yet (`docs/ROADMAP.md`).
+
+A seed passes only if the UVM verdict is PASS *and* the simulator's own error
+count is zero -- bound-assertion failures land in the second count, not the
+first, and the regression's failure path is itself verified by a seeded
+always-false assertion (`docs/BUGS.md`, V12).
 
 The three that no seed reaches are `x_op_rs1.load_d{1,2,3}`: a load's base
 register is a dependency on a recent result. Every generated load uses `x1`, the

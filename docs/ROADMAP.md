@@ -12,19 +12,29 @@ a strong claim, but it is not the same as passing the official compliance suite.
 Until that suite runs, "verified against Spike" is the accurate phrasing and
 "compliant" is not.
 
-**Close functional coverage.** *Mostly done.* `gen_stream.py` used to bias only
-`rs1`, and only toward the immediately preceding destination, so `rs2` was never
-stressed and dependency distances 2 and 3 were left to chance. It now biases
-both source registers toward a uniformly chosen one of the last three
-destinations (`biased_src()`, `BIAS_PCT`).
+**Write a requirements-derived coverage plan.** The current 59-bin model was
+built outward from the hazard machinery, which is why its percentage moves when
+the hazard stimulus improves and why it says nothing about CSRs, trap causes,
+interrupt timing, load/store widths, individual ALU operations, operand
+corners, or debug entry/exit. A real plan starts from the RV32I and privileged
+specs plus this design's feature list, derives bins from requirements, and
+only then reports a percentage. Until that exists, every coverage number below
+is a hazard-stimulus metric and is labelled as such.
 
-Measured on the same ten seeds, before and after:
+**Close the hazard coverage model.** *Mostly done.* `gen_stream.py` used to
+bias only `rs1`, and only toward the immediately preceding destination. It now
+biases both source registers toward a uniformly chosen one of the last three
+*architectural producers* -- stores, branches and x0-writes push nothing, which
+was its own bug once (V14 in [BUGS.md](BUGS.md)). Measured on the same ten
+seeds across the three states of the generator:
 
-| | before | after |
-|---|---|---|
-| per-seed coverage | 59-69% | 66-83% |
-| union across 10 seeds | 48/59 bins, 81.4% | **56/59 bins, 94.9%** |
-| bins no seed reached | 11 | 3 |
+| | rs1-only bias | both biased (phantom producers) | producers tracked correctly |
+|---|---|---|---|
+| per-seed coverage | 59-69% | 66-83% | 71-81% |
+| union across 10 seeds | 48/59, 81.4% | 56/59, 94.9% | **56/59, 94.9%** |
+| bins no seed reached | 11 | 3 | 3 |
+
+The generator's invariants are now pinned by `verif/spike/test_gen_stream.py`.
 
 Three bins remain unreachable, and they are all the same gap:
 `x_op_rs1.load_d{1,2,3}` -- a load whose *base* register depends on a recent
@@ -52,13 +62,42 @@ the corner instead of hoping for it.
 `a_flushe_has_cause` check that every flush has a cause. D5 was the opposite --
 a cause (`ExitDebug`) with no flush -- so those properties could not have caught
 it. `ExitDebug |-> FlushD && FlushE`, and the same for the other redirect
-sources, would close that direction.
+sources, would close that direction. Related gaps: no properties yet for
+retirement validity, wrong-path retirement, PC alignment/progression, or
+"no memory write from a flushed instruction". And note the honest scope: these
+are simulation assertions -- nothing here is formally proven. The hazard unit
+and controller are small enough that a real formal pass (SymbiYosys) over the
+bound properties is feasible and would upgrade "checked on the stimulus we ran"
+to "proven for all inputs".
+
+**Gate assertion-cover reachability.** The 10 cover properties exist so the
+assertions cannot pass vacuously, but nothing yet *requires* them to hit --
+a run where `c_fwd_both_stages` never fires still passes. The regression
+should extract cover counts from the log and fail on a zero, the same way it
+now fails on assertion errors.
+
+**Widen `retire_if` toward RVFI.** The retirement lockstep comparison is the
+strongest checker in the project, and the features that most need it -- CSRs,
+traps, interrupts, `mret`, debug -- bypass it entirely, relying on directed
+end-state tests that a transient wrong value can slip past. The structural fix
+is RVFI-style retirement information (trap/interrupt flags, rs1/rs2 addresses
+and read data, memory masks, CSR address/read/write data) and generated
+streams that include SYSTEM instructions, checked through the same Spike
+comparator.
+
+**CI and pinned tooling.** No CI runs any of this on push; Spike and the
+cross-toolchain versions are whatever the development machine has. A workflow
+that runs the directed tests, the generator unit tests, and lint on every push
+-- with the Spike revision pinned -- is table stakes before anyone else can
+trust a green checkmark.
 
 **Run the covergroups.** The coverage model exists twice: a plain-SystemVerilog
-bin tally that runs everywhere, and the equivalent `covergroup` blocks behind
+bin tally that runs everywhere, and `covergroup` blocks behind
 `` `ifdef RV32I_COVERAGE ``. Questa Starter Edition's licence withholds
-`covergroup`, so only the tally has ever executed. The covergroups are written
-but unexercised -- they need a licensed simulator before they can be trusted.
+`covergroup`, so only the tally has ever executed. The two are also not
+bin-for-bin identical -- the tally has hazard-kind bins the covergroups lack,
+and the covergroups have a branch kind-by-outcome cross the tally lacks -- so
+first execution includes reconciling them, not just compiling them.
 
 **Verilator on the current tree.** Verilator is not installed on the development
 machine, so recent commits are Icarus-only. The two-simulator claim needs a
