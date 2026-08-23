@@ -88,6 +88,8 @@ rtl/mem_bus.sv
 rtl/imem.sv
 rtl/reset_sync.sv
 rtl/top.sv
+verif/sva/hazard_sva.sv
+verif/sva/hazard_sva_bind.sv
 verif/uvm/mem_backdoor_if.sv
 verif/uvm/mem_backdoor_bind.sv
 verif/uvm/rv32i_if.sv
@@ -96,10 +98,9 @@ verif/uvm/tb_uvm_top.sv
 ```
 
 Use each file's own name when you add it (EDA Playground doesn't care
-about the `rtl/`/`verif/uvm/` prefixes above — that's just this repo's
-layout — just don't rename the files themselves, since `iss_dpi.cc`'s
-`#include "rv32isim.hpp"` and the module/package names all assume the
-original filenames).
+about the `rtl/`/`verif/uvm/`/`verif/sva/` prefixes above — that's just
+this repo's layout — just don't rename the files themselves, since the
+module/package names and `` `include `` lines assume them).
 
 You do **not** need `rtl/tb_pipe.sv` (the directed Icarus testbenches) or
 `rtl/golden_vals_pipe*.svh` here — this environment doesn't use them.
@@ -143,9 +144,10 @@ scoreboard that checks nothing.
 - Nothing else needs to be set — `tb_uvm_top.sv` hardcodes
   `run_test("rv32i_random_test")`, so there's no required `+UVM_TESTNAME`
   plusarg for a first run.
-- Optional: to change the random program length from the default of 40
-  body instructions, add `+NUM_INSTR=<n>` as a simulator run-time
-  argument/plusarg (look for a "Run options"/"Simulation args" field).
+- To change the random program length, regenerate `stream.hex` and
+  `stream_trace.txt` locally with `gen_stream.py --num-instr <n>` and
+  re-upload the pair. Program length is fixed at generation time -- the
+  two files must always be regenerated together.
 - Click **Run**.
 
 ## 6. What "it worked" looks like
@@ -153,17 +155,21 @@ scoreboard that checks nothing.
 The UVM log should end with something like:
 
 ```
-UVM_INFO ... [DRIVER] backdoor-loaded 42 instruction words
-UVM_INFO ... [SCOREBOARD] sentinel retired -- 42 instructions checked, 0 mismatches
-UVM_INFO ... [TEST] DONE -- 42 instructions checked, 0 mismatches
+UVM_INFO ... [DRIVER] backdoor-loaded 147 instruction words
+UVM_INFO ... [SCOREBOARD] sentinel retired -- 136 instructions checked, 0 mismatches
+UVM_INFO ... [TEST] DONE -- 136 of 136 retirements checked, 0 mismatches
 UVM_INFO ... [TEST] *** UVM TEST PASSED ***
 ```
 
-If instead you see `UVM_ERROR ... [PC_MISMATCH]` or `[REG_MISMATCH]`
-lines, that's either a real RTL bug this environment just caught (exciting
-— that's the whole point) or a bug in the environment itself (also
-possible, since this hasn't run yet) — paste me the first mismatch line
-and the instruction word it names, and I'll help figure out which.
+followed by the coverage report and `RV32I_UVM_VERDICT: PASS`. Also check
+the simulator's own error count: bound-assertion failures are simulator
+errors, not UVM errors, and do not move the UVM report summary (the local
+run scripts gate both -- see `run_uvm.sh`).
+
+A `[PC_MISMATCH]` or `[REG_MISMATCH]` is either a real RTL bug or a bug in
+the environment. Rule out the environment first, the same way RUNNING.md
+describes: confirm `stream.hex` and `stream_trace.txt` were generated
+together, then check the retirement index against the trace.
 
 ## 7. Waveforms
 
@@ -179,12 +185,12 @@ directly.
   BRANCH. Adding these is what would start exercising the CSR/trap/
   interrupt/UART machinery through this environment instead of only
   through the existing directed `tb_pipe_csr` test.
-- **True `rand`/`constraint`-based generation** instead of the current
-  procedural `$urandom_range()` calls in `rv32i_random_seq::body()` — a
-  reasonable upgrade once this is confirmed running, not before (see
-  that class's header comment for why procedural generation was the
-  lower-risk choice for a first, never-yet-compiled-in-a-real-simulator
-  pass).
-- **Functional coverage** (a `covergroup` on instruction class × forwarding
-  path × stall/flush reason, per `docs/DESIGN_GUIDE.md` Section 7 Step 5)
-  once the environment itself is confirmed working.
+- **True `rand`/`constraint`-based generation** instead of the offline
+  Python generator — the main thing a full-licence simulator enables that
+  Questa Starter withholds.
+- **Executing the covergroups.** The bin-tally half of
+  `src/rv32i_coverage.svh` runs everywhere and is what all reported
+  coverage numbers come from; the `covergroup` half behind
+  `+define+RV32I_COVERAGE` has never executed anywhere, and running it here
+  (and reconciling any disagreement with the tally) is the point of this
+  whole setup.

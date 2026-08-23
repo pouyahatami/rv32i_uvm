@@ -136,5 +136,9 @@ retirement index against the trace before suspecting the core.
 - **Constrained-random generation** in the sequence instead of Python
   generation. Costs Starter Edition support, and would need the program and the
   Spike reference to be generated together some other way.
-- **Functional coverage**, a covergroup on instruction class by forwarding path
-  by stall/flush reason. Also costs Starter Edition support.
+- **Covergroup-based coverage.** Coverage IS collected -- as the
+  plain-SystemVerilog bin tally in `src/rv32i_coverage.svh`, which runs under
+  Starter Edition and prints its report at the end of every run. What Starter
+  withholds is the `covergroup` construct; the equivalent covergroups exist
+  behind `` `ifdef RV32I_COVERAGE `` and have never executed. See that file's
+  header for the full licensing story.
