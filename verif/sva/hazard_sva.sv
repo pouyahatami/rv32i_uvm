@@ -164,8 +164,33 @@ module hazard_sva (
   a_branch_flushes_both: assert property (PCSrcE |-> FlushD && FlushE);
 
   // A trap must flush the pipeline stages behind it, otherwise wrong-path
-  // instructions retire *after* the trap was taken.
-  a_trap_flushes: assert property (trap_en |-> FlushD && FlushE);
+  // instructions retire *after* the trap was taken -- and the trapping
+  // instruction itself must not commit, which is FlushM's job.
+  a_trap_flushes: assert property (trap_en |-> FlushD && FlushE && FlushM);
+
+  // Cause -> effect, for every remaining redirect source. The two
+  // *_has_cause assertions above point the other way -- "every flush has a
+  // cause" -- and that direction is structurally blind to the D5 bug class:
+  // ExitDebug redirected the PC with NO flush, every flush that did happen
+  // had a cause, and the has-cause checks passed while wrong-path
+  // instructions executed for real (docs/BUGS.md, D5). These close the
+  // converse.
+  //
+  // HONESTY NOTE ON VACUITY: the generated UVM stream currently contains no
+  // jumps, traps, mret, or debug traffic, so under that stimulus these pass
+  // vacuously -- the cover properties below them are what make that visible
+  // in a report rather than invisible in a pass. They are non-vacuous under
+  // any stimulus that exercises the machinery (tb_pipe_debug's sequence,
+  // once a licensed-simulator directed flow binds this file, or a generated
+  // stream that gains SYSTEM/jump support -- docs/ROADMAP.md tracks both).
+  a_jump_flushes:       assert property (JumpD      |-> FlushD);
+  a_mret_flushes:       assert property (mret_enE   |-> FlushD && FlushE);
+  a_enterdebug_flushes: assert property (EnterDebug |-> FlushD && FlushE && FlushM);
+  a_exitdebug_flushes:  assert property (ExitDebug  |-> FlushD && FlushE);
+  c_jump:               cover  property (JumpD);
+  c_mret:               cover  property (mret_enE);
+  c_enterdebug:         cover  property (EnterDebug);
+  c_exitdebug:          cover  property (ExitDebug);
 
   // ---------------------------------------------------------------------------
   // Coverage of the interesting conditions, as cover properties. These are NOT
