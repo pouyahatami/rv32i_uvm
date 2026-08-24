@@ -88,6 +88,11 @@ cd verif/uvm && ./run_uvm.sh        # one seed
 cd verif/uvm && ./run_seeds.sh 10   # multi-seed regression + cross-seed coverage
 ```
 
+The complete flow for one seed, together with the outer multi-seed regression,
+is shown below:
+
+![RV32I UVM and Spike verification flow: generate a hazard-biased program, run Spike offline, load the program through the UVM driver, monitor DUT retirements, compare them in the scoreboard, and collect functional coverage](images/riscv_uvm_verification_flow.png)
+
 Ten seeds pass with zero mismatches, zero `UVM_ERROR`, and zero simulator
 errors, checking 136-147 instructions each against Spike, at 71-81% of the
 59-bin hazard coverage model per seed. Across the ten, 56 of the 59 bins are
