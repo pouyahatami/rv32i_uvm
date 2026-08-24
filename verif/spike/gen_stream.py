@@ -5,9 +5,7 @@
         --out-hex ../uvm/stream.hex --out-trace ../uvm/stream_trace.txt
 
 Writes the program the DUT runs and the trace the scoreboard checks it against.
-The two must always be regenerated together: a trace computed from a different
-program is a scoreboard that checks nothing.
-
+The two must always be regenerated together.
 Spike runs here, ahead of simulation, rather than being called live from the
 testbench. verif/uvm/RUNNING.md explains why and what that costs.
 
@@ -17,8 +15,7 @@ Trace format, one row per retirement in retirement order:
 
 Hex except rd, regwrite and store_valid. When store_valid is 0 the two store
 columns are 0. Traces carrying only the first five columns are still accepted;
-the scoreboard then disables store checking rather than silently passing stores
-it never compared.
+the scoreboard then disables store checking.
 """
 
 import argparse
@@ -70,26 +67,37 @@ def data_base_for(num_instr):
     return base
 
 
+
+# Field skeleton shared by all formats (R-type shown; the others repurpose
+# the funct7/rd slots for immediate bits):
+#
+# bit: 31      25 24   20 19   15 14  12 11    7 6      0
+#      ┌─────────┬───────┬───────┬──────┬───────┬────────┐
+#      │ funct7  │  rs2  │  rs1  │funct3│  rd   │ opcode │
+#      │ 7 bits  │ 5 bits│ 5 bits│3 bits│ 5 bits│ 7 bits │
+#      └─────────┴───────┴───────┴──────┴───────┴────────┘
+
+# I-type (ALU-immediate, loads): imm[11:0] replaces funct7+rs2 at bits 31:20.
 def enc_i(opcode, rd, funct3, rs1, imm12):
-    return ((imm12 & 0xFFF) << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
+    return (((imm12 & 0xFFF) << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode)
 
-
+# R-type (register-register ALU): no immediate; funct7 disambiguates ADD/SUB, SRL/SRA.
 def enc_r(opcode, rd, funct3, rs1, rs2, funct7):
-    return (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
+    return ((funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode)
 
-
+# S-type (stores): no rd, so imm[11:5] takes the funct7 slot and imm[4:0] the rd slot.
 def enc_s(opcode, funct3, rs1, rs2, imm12):
     imm12 &= 0xFFF
     return (((imm12 >> 5) & 0x7F) << 25) | (rs2 << 20) | (rs1 << 15) | \
            (funct3 << 12) | ((imm12 & 0x1F) << 7) | opcode
 
-
+# B-type (branches): 13-bit even offset, bit 0 implicit; imm[12] -> bit 31,
+# imm[10:5] -> 30:25, imm[4:1] -> 11:8, imm[11] -> bit 7.
 def enc_b(opcode, funct3, rs1, rs2, imm13):
     imm13 &= 0x1FFF
     return (((imm13 >> 12) & 1) << 31) | (((imm13 >> 5) & 0x3F) << 25) | \
            (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | \
            (((imm13 >> 1) & 0xF) << 8) | (((imm13 >> 11) & 1) << 7) | opcode
-
 
 def generate(rng, num_instr):
     """Build a stream that is legal by construction, so it needs no post-hoc constraints.
@@ -112,11 +120,8 @@ def generate(rng, num_instr):
     # x1 = the data base pointer (see data_base_for -- deliberately not 0).
     words.append(enc_i(OP_ITYPE, SAFE_BASE_REG, 0b000, 0, base))
 
-    # Memory-zeroing prologue: store 0 to every word the generated loads reach.
-    # A load from a never-written location reads 0 on Spike but X in a 4-state
-    # simulator, so every such load would mismatch for no reason connected to
-    # the DUT. Using real stores rather than a backdoor keeps the prologue
-    # inside the checked trace, so it verifies itself.
+    # Zero the data window: an unwritten word reads 0 on Spike but X in RTL
+    # sim, so any load from it would mismatch.
     for off in range(0, DATA_WINDOW, 4):
         words.append(enc_s(OP_STORE, 0b010, SAFE_BASE_REG, 0, off))
 
