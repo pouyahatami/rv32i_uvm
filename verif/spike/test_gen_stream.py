@@ -54,16 +54,17 @@ def b_imm(w):
 WRITING_OPCODES = {g.OP_RTYPE, g.OP_ITYPE, g.OP_LOAD}
 
 
-def body_of(words, num_instr):
+def body_of(words, random_instr_count):
     """The randomly generated slice: after the prologue, before pad+sentinel."""
-    prologue = g.REG_INIT_WORDS + 1 + g.DATA_WINDOW // 4
-    return words[prologue:prologue + num_instr]
+    prologue = g.REG_INIT_WORDS + 1
+    return words[prologue:prologue + random_instr_count]
 
 
-def streams(n_seeds=50, num_instr=40):
+def streams(n_seeds=50, random_instr_count=40):
     for seed in range(n_seeds):
         rng = random.Random(seed)
-        yield seed, g.generate(rng, num_instr), num_instr
+        yield (seed, g.generate(rng, random_instr_count),
+               random_instr_count)
 
 
 class TestReservedRegisters(unittest.TestCase):
@@ -74,22 +75,22 @@ class TestReservedRegisters(unittest.TestCase):
         for seed, words, n in streams():
             for w in body_of(words, n):
                 if opcode(w) in WRITING_OPCODES:
-                    self.assertNotIn(rd(w), (g.SAFE_BASE_REG, g.SENTINEL_REG),
+                    self.assertNotIn(rd(w), (g.DATA_BASE_GPR, g.COMPLETION_GPR),
                                      f"seed {seed}: body writes reserved reg")
 
     def test_every_memory_access_is_based_on_x1(self):
         for seed, words, n in streams():
             for w in body_of(words, n):
                 if opcode(w) in (g.OP_LOAD, g.OP_STORE):
-                    self.assertEqual(rs1(w), g.SAFE_BASE_REG,
+                    self.assertEqual(rs1(w), g.DATA_BASE_GPR,
                                      f"seed {seed}: memory access off x{rs1(w)}")
 
 
 class TestMemoryWindow(unittest.TestCase):
-    def test_offsets_stay_inside_the_zeroed_window_and_are_aligned(self):
-        # An offset past DATA_WINDOW reads memory the prologue never zeroed:
-        # 0 on Spike, X on a 4-state simulator (BUGS.md V6). Misalignment
-        # would trap on the DUT and not on Spike.
+    def test_offsets_stay_inside_the_initialized_window_and_are_aligned(self):
+        # The UVM reset-time backdoor establishes the known-zero dmem state.
+        # Keeping accesses in MEM_GAP_BYTES also keeps them below
+        # MMIO. A misaligned access would trap on the DUT and not on Spike.
         width_align = {0b000: 1, 0b100: 1, 0b001: 2, 0b101: 2, 0b010: 4}
         for seed, words, n in streams():
             for w in body_of(words, n):
@@ -100,7 +101,7 @@ class TestMemoryWindow(unittest.TestCase):
                 else:
                     continue
                 f3 = fld(w, 12, 14)
-                self.assertLess(off, g.DATA_WINDOW, f"seed {seed}")
+                self.assertLess(off, g.MEM_GAP_BYTES, f"seed {seed}")
                 self.assertEqual(off % width_align[f3], 0,
                                  f"seed {seed}: misaligned funct3={f3:03b} off={off}")
 
@@ -113,7 +114,8 @@ class TestBranches(unittest.TestCase):
             for w in body_of(words, n):
                 if opcode(w) == g.OP_BRANCH:
                     self.assertGreater(b_imm(w), 0, f"seed {seed}")
-                    self.assertLessEqual(b_imm(w), g.MAX_BRANCH_OFF, f"seed {seed}")
+                    self.assertLessEqual(b_imm(w), g.MEMAX_BRANCH_OFFSET,
+                                         f"seed {seed}")
 
 
 class TestSentinel(unittest.TestCase):
@@ -121,8 +123,8 @@ class TestSentinel(unittest.TestCase):
         for seed, words, n in streams(n_seeds=10):
             w = words[-1]
             self.assertEqual(opcode(w), g.OP_ITYPE)
-            self.assertEqual(rd(w), g.SENTINEL_REG)
-            self.assertEqual(i_imm(w), g.SENTINEL_VAL)
+            self.assertEqual(rd(w), g.COMPLETION_GPR)
+            self.assertEqual(i_imm(w), g.COMPLETION_VALUE)
 
 
 class TestHazardBias(unittest.TestCase):

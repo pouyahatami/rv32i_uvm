@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Generate the UVM environment's instruction stream and its expected retirement trace.
+"""Generate the UVM environment's instruction stream and its expected
+retirement trace.
 
     ./gen_stream.py --seed 1 --num-instr 40 \
         --out-hex ../uvm/stream.hex --out-trace ../uvm/stream_trace.txt
@@ -27,44 +27,56 @@ import sys
 import tempfile
 
 OP_RTYPE, OP_ITYPE, OP_LOAD, OP_STORE, OP_BRANCH = 0x33, 0x13, 0x03, 0x23, 0x63
-SAFE_BASE_REG = 1
-SENTINEL_REG = 31
-SENTINEL_VAL = 0x7FF
+DATA_BASE_GPR = 1
+COMPLETION_GPR = 31
+COMPLETION_VALUE = 0x7FF
 NOP = 0x00000013
-MAX_BRANCH_OFF = 48                       # matches the generator below
-PAD_WORDS = MAX_BRANCH_OFF // 4           # enough padding for the longest branch
-DATA_WINDOW = 256                         # bytes reachable from x1 by any
-                                          # generated load/store (max offset 255)
-MAX_ADDI_IMM = 2047                       # x1 is set with a single ADDI
-BIAS_PCT = 60                             # chance a source register is a recent
-                                          # destination -- see biased_src()
-REG_INIT_REGS = range(2, 31)              # x2..x30 -- see the prologue in
-REG_INIT_WORDS = len(REG_INIT_REGS)       # generate() for why these are zeroed
-ENTRY_PC = 0x0                            # the core's reset vector
+MEMAX_BRANCH_OFFSET = 48                       # Chosen by the generator.
+PAD_WORDS = MEMAX_BRANCH_OFFSET // 4           # Enough padding for the longest
+                                               # branch offset from the last
+                                               # random instruction to land
+                                               # within the defined imem region
+                                               # (NOP instructions).
+
+MEM_GAP_BYTES = 256                            # Gap between the imem and dmem
+                                               # regions.
+
+MAX_ADDI_IMMEDIATE = 2047                      # x1 is set with a single ADDI by
+                                               # the generator; the program
+                                               # length must not cause its base
+                                               # to exceed this value.
+RECENT_RESULT_BIAS_PERCENT = 60                # Chance a source register is a
+                                               # recent destination; see
+                                               # biased_src().
+REG_INIT_REGS = range(2, 31)                   # x2..x30.
+REG_INIT_WORDS = len(REG_INIT_REGS)
+ENTRY_PC = 0x0                                 # The core's reset vector.
 
 
-def data_base_for(num_instr):
-    """Where x1 points. Must not be 0.
+def compute_data_window_base(random_instr_count):
+    """Compute the safe data-window address placed in x1. Must not be 0.
 
     The DUT is Harvard (separate imem and dmem, both based at 0); Spike is von
-    Neumann. With x1 = 0 the generated stores land on the program image, which
-    only Spike then executes -- it traps to an uninitialised mtvec and loops, so
-    the sentinel never retires and the two models disagree about the whole run.
+    Neumann. With x1 = 0, the generated stores land on the program image, which
+    only Spike then executes (overwriting the imem).
 
     Pointing x1 past the program image with a 256-byte gap keeps each model's
-    data region clear of its code. DESIGN_GUIDE.md section 8 has the full list
-    of legitimate model differences.
+    data region clear of its code.
     """
-    n_words = (REG_INIT_WORDS + 1 + DATA_WINDOW // 4
-               + num_instr + PAD_WORDS + 1)
-    prog_bytes = n_words * 4
-    base = ((prog_bytes + 255) // 256 + 1) * 256      # round up, then one gap
-    if base + DATA_WINDOW - 1 > MAX_ADDI_IMM:
-        sys.exit(f"--num-instr {num_instr} makes the program too long: x1 would "
-                 f"need to be 0x{base:x}, past what a single ADDI can encode "
-                 f"({MAX_ADDI_IMM}). Use a smaller --num-instr, or teach the "
-                 f"generator to emit LUI+ADDI for the base pointer.")
-    return base
+    # The two +1 terms below account for the x1 data-base initialization and
+    # the x31 completion instruction, indicating program start and completion.
+    program_word_count = (REG_INIT_WORDS + 1 + random_instr_count
+                          + PAD_WORDS + 1)
+    program_size_bytes = program_word_count * 4
+    data_window_base = ((program_size_bytes + 255) // 256 + 1) * 256
+    if data_window_base + MEM_GAP_BYTES - 1 > MAX_ADDI_IMMEDIATE:
+        sys.exit(
+            f"--num-instr {random_instr_count} makes the program too long: "
+            f"x1 would need to be 0x{data_window_base:x}, past what a single "
+            f"ADDI can encode ({MAX_ADDI_IMMEDIATE}). Use a smaller "
+            "--num-instr, or teach the generator to emit LUI+ADDI for the "
+            "base pointer.")
+    return data_window_base
 
 
 
@@ -77,15 +89,18 @@ def data_base_for(num_instr):
 #      │ 7 bits  │ 5 bits│ 5 bits│3 bits│ 5 bits│ 7 bits │
 #      └─────────┴───────┴───────┴──────┴───────┴────────┘
 
-# I-type (ALU-immediate, loads): imm[11:0] replaces funct7+rs2 at bits 31:20.
+# I-type (ALU-immediate, loads): imm[11:0] replaces funct7+rs2 at bits
+# 31:20.
 def enc_i(opcode, rd, funct3, rs1, imm12):
     return (((imm12 & 0xFFF) << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode)
 
-# R-type (register-register ALU): no immediate; funct7 disambiguates ADD/SUB, SRL/SRA.
+# R-type (register-register ALU): no immediate; funct7 disambiguates ADD/SUB
+# and SRL/SRA.
 def enc_r(opcode, rd, funct3, rs1, rs2, funct7):
     return ((funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode)
 
-# S-type (stores): no rd, so imm[11:5] takes the funct7 slot and imm[4:0] the rd slot.
+# S-type (stores): no rd, so imm[11:5] takes the funct7 slot and imm[4:0]
+# takes the rd slot.
 def enc_s(opcode, funct3, rs1, rs2, imm12):
     imm12 &= 0xFFF
     return (((imm12 >> 5) & 0x7F) << 25) | (rs2 << 20) | (rs1 << 15) | \
@@ -99,15 +114,17 @@ def enc_b(opcode, funct3, rs1, rs2, imm13):
            (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | \
            (((imm13 >> 1) & 0xF) << 8) | (((imm13 >> 11) & 1) << 7) | opcode
 
-def generate(rng, num_instr):
-    """Build a stream that is legal by construction, so it needs no post-hoc constraints.
+def generate(rng, random_instr_count):
+    """Build a stream that is legal by construction.
+
+    This means it needs no post-hoc constraints.
 
     x1 is a reserved base pointer -- never any instruction's destination -- so
     every load/store offset is known here to be small, aligned, and clear of the
     MMIO window. Branches only ever go forward, by a bounded amount. The last
     instruction is a sentinel the scoreboard watches for.
     """
-    base = data_base_for(num_instr)
+    data_window_base = compute_data_window_base(random_instr_count)
 
     # Register-zeroing prologue. Spike's boot ROM leaves state behind before
     # jumping to the ELF entry (notably x11 = dtb pointer); the DUT resets
@@ -117,13 +134,14 @@ def generate(rng, num_instr):
     # never read by the body, so neither needs zeroing here.
     words = [enc_i(OP_ITYPE, r, 0b000, 0, 0) for r in REG_INIT_REGS]
 
-    # x1 = the data base pointer (see data_base_for -- deliberately not 0).
-    words.append(enc_i(OP_ITYPE, SAFE_BASE_REG, 0b000, 0, base))
+    # x1 = the data base pointer. It is deliberately not 0; see
+    # compute_data_window_base().
+    words.append(enc_i(OP_ITYPE, DATA_BASE_GPR, 0b000, 0,
+                       data_window_base))
 
-    # Zero the data window: an unwritten word reads 0 on Spike but X in RTL
-    # sim, so any load from it would mismatch.
-    for off in range(0, DATA_WINDOW, 4):
-        words.append(enc_s(OP_STORE, 0b010, SAFE_BASE_REG, 0, off))
+    # The UVM driver clears dmem through a verification-only backdoor while
+    # reset is asserted. Spike also starts RAM at zero, so loads from the data
+    # window now agree without spending 64 retired stores on initialization.
 
     # The architectural producers among the last three instructions, most
     # recent first. A slot holds the destination register if that instruction
@@ -142,33 +160,33 @@ def generate(rng, num_instr):
     # and 2 are the two forwarding paths, and distance 3 is the register-file
     # read-during-write bypass -- the gap between those two mechanisms, and a
     # real bug once (docs/BUGS.md, D4).
-    recent_rd = [SAFE_BASE_REG, 0, 0]
+    recent_rd = [DATA_BASE_GPR, 0, 0]
 
     def biased_src():
         """A source register, biased toward a recent real producer.
 
-        BIAS_PCT of the time this picks one of the last three slots uniformly,
-        so the stimulus asks for all three hazard distances rather than piling
-        onto the easiest one. A slot holding 0 means that instruction produced
-        nothing -- fall through to a uniform pick rather than fabricating a
-        dependency on x0, which is never a hazard.
+        RECENT_RESULT_BIAS_PERCENT of the time this picks one of the last three
+        slots uniformly, so the stimulus asks for all three hazard distances
+        rather than piling onto the easiest one. A slot holding 0 means that
+        instruction produced nothing -- fall through to a uniform pick rather
+        than fabricating a dependency on x0, which is never a hazard.
 
         Every register this can return is architecturally defined at this
         point: x1 is the base pointer, x2..x30 are zeroed by the prologue, and
         x0 is hardwired. x31 is the sentinel and is deliberately unreachable.
         """
-        if rng.randrange(100) < BIAS_PCT:
+        if rng.randrange(100) < RECENT_RESULT_BIAS_PERCENT:
             r = recent_rd[rng.randrange(3)]
             if r != 0:
                 return r
         return rng.randrange(31)
 
-    for _ in range(num_instr):
+    for _ in range(random_instr_count):
         cls = rng.randrange(100)
         rs1 = biased_src()
         rs2 = biased_src()
         rd = rng.randrange(31)
-        while rd in (SAFE_BASE_REG, SENTINEL_REG):
+        while rd in (DATA_BASE_GPR, COMPLETION_GPR):
             rd = rng.randrange(31)
 
         if cls < 30:                                        # R-type
@@ -189,14 +207,14 @@ def generate(rng, num_instr):
                 (0b000, rng.randrange(256)),
                 (0b100, rng.randrange(256)),
             ][rng.randrange(5)]
-            words.append(enc_i(OP_LOAD, rd, funct3, SAFE_BASE_REG, off))
+            words.append(enc_i(OP_LOAD, rd, funct3, DATA_BASE_GPR, off))
         elif cls < 90:                                      # STORE off x1
             funct3, off = [
                 (0b010, rng.randrange(64) * 4),
                 (0b001, rng.randrange(128) * 2),
                 (0b000, rng.randrange(256)),
             ][rng.randrange(3)]
-            words.append(enc_s(OP_STORE, funct3, SAFE_BASE_REG, rs2, off))
+            words.append(enc_s(OP_STORE, funct3, DATA_BASE_GPR, rs2, off))
         else:                                               # BRANCH, forward only
             funct3 = 0b001 if rng.randrange(2) else 0b000
             words.append(enc_b(OP_BRANCH, funct3, rs1, rs2,
@@ -210,7 +228,7 @@ def generate(rng, num_instr):
     # Pad so a forward branch among the last few instructions lands inside the
     # program rather than in unwritten memory.
     words += [NOP] * PAD_WORDS
-    words.append(enc_i(OP_ITYPE, SENTINEL_REG, 0b000, 0, SENTINEL_VAL))
+    words.append(enc_i(OP_ITYPE, COMPLETION_GPR, 0b000, 0, COMPLETION_VALUE))
     return words
 
 
@@ -281,7 +299,7 @@ def spike_trace(spike, elf, sentinel_word, memmap, max_instr):
                  "did not terminate as expected. The usual cause is the "
                  "program corrupting itself: Spike has one address space, the "
                  "DUT is Harvard, so a store into the code image loops Spike "
-                 "forever. See data_base_for().")
+                 "forever. See compute_data_window_base().")
 
     # Drop Spike's boot ROM: it runs a short setup sequence before jumping to
     # the ELF entry, and those retirements have no counterpart in the DUT, which
@@ -298,7 +316,7 @@ def spike_trace(spike, elf, sentinel_word, memmap, max_instr):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--num-instr", type=int, default=40)
+    ap.add_argument("--num-instr", dest="random_instr_count", type=int, default=40)
     ap.add_argument("--out-hex", default="../uvm/stream.hex")
     ap.add_argument("--out-trace", default="../uvm/stream_trace.txt")
     ap.add_argument("--memmap", default="0x0:0x1000,0x2000:0x1e000")
@@ -308,7 +326,7 @@ def main():
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
-    words = generate(rng, args.num_instr)
+    words = generate(rng, args.random_instr_count)
     sentinel = words[-1]
 
     with tempfile.TemporaryDirectory() as wd:
@@ -321,7 +339,7 @@ def main():
 
     with open(args.out_trace, "w") as f:
         f.write(f"// AUTO-GENERATED by verif/spike/gen_stream.py "
-                f"--seed {args.seed} --num-instr {args.num_instr}\n")
+                f"--seed {args.seed} --num-instr {args.random_instr_count}\n")
         f.write("// Reference model: Spike. Columns: "
                 "pc instr rd wdata regwrite store_valid store_addr store_data\n")
         for pc, instr, rd, wdata, regwrite, sv, sa, sd in trace:
