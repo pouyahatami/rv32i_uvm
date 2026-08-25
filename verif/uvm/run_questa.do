@@ -126,14 +126,20 @@ set verdict "NOT REACHED"
 # Simulator error count: bound-SVA assertion failures land here, not in the
 # UVM report server, so the UVM verdict alone would pass over a run whose
 # assertions all fired. Both conditions gate the exit code.
+#
+# The end-of-run "Errors: N, Warnings: M" summary line cannot be used for
+# this: as of Questa 25.3 it is written to the log at quit, after this script
+# has already parsed it (it worked on 2025.2). Counting the "** Error" lines
+# themselves is timing-independent and gives the same number.
 set simerrs -1
 if {[catch {set fh [open run.log r]} openmsg] == 0} {
+  set simerrs 0
   foreach line [split [read $fh] "\n"] {
     if {[string match "*RV32I_UVM_VERDICT:*" $line]} {
       set verdict [string trim [lindex [split $line ":"] end]]
     }
-    if {[regexp {^# Errors: (\d+),} $line -> n]} {
-      set simerrs $n
+    if {[regexp {^# \*\* (Error|Fatal)} $line]} {
+      incr simerrs
     }
   }
   close $fh
