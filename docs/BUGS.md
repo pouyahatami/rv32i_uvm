@@ -456,15 +456,32 @@ returns 0. A 4-state simulator returns X. Every such load mismatches, for a
 reason with nothing to do with the DUT.
 
 **Original fix** A memory-zeroing prologue stored 0 to every word the generated
-loads could reach. It made the program self-contained, but 64 setup stores
-dominated every 40-instruction random stream.
+loads could reach. That choice was made deliberately -- **real stores rather
+than a backdoor write**, so the initialization sat inside the checked trace and
+verified itself instead of being a trusted side-channel.
 
-**Current fix** The UVM driver clears the full dmem array through a
-verification-only interface while reset is asserted. The interface is attached
-with `bind`, so `dmem.sv` remains synthesizable RAM with no hardware reset. The
-generator still constrains every access to `DATA_WINDOW_SIZE_BYTES`; Spike's
-zero-filled RAM and the explicitly cleared RTL RAM therefore start from the
-same state.
+**Current fix, and why the original argument was overruled** The UVM driver now
+clears the full dmem array through a verification-only interface while reset is
+asserted. The interface is attached with `bind`, so `dmem.sv` remains
+synthesizable RAM with no hardware reset. The generator still constrains every
+access to `MEM_GAP_BYTES`; Spike's zero-filled RAM and the explicitly cleared
+RTL RAM therefore start from the same state.
+
+This is a reversal of the original fix's stated rationale, not a drift away
+from it, and it was made for a measured reason: 64 setup stores dominated every
+40-instruction random stream, so most of each program was prologue rather than
+stimulus, and the store-heavy opening skewed the hazard mix. Removing it took
+the 10-seed coverage union from 56/59 to 59/59 bins (the table in
+[ROADMAP.md](ROADMAP.md)).
+
+Two things were knowingly given up. First, the clear is a trusted path in the
+sense that no retirement checks it -- but not an *unchecked* one: if any byte
+the clear was supposed to zero is left stale or X, the first generated load
+that touches it mismatches against Spike's zero and the scoreboard reports it.
+The check moved from the trace to the effect. Second, force-zeroed dmem can no
+longer propagate X from uninitialized data memory, which is the very signal
+that exposed this bug class; the monitor's `RETIRE_X` check still guards every
+other X source at the retirement boundary.
 
 ---
 
