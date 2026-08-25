@@ -383,7 +383,7 @@ when a refactor invalidates one.
 
 **The check now** Elaboration resolves the path, so a broken one is a build
 failure rather than a silent skip. The UVM environment avoids the problem class
-entirely: `verif/uvm/mem_backdoor_if.sv` reaches memory through a `bind` and a
+entirely: `verif/uvm/imem_backdoor_if.sv` reaches imem through a `bind` and a
 `ref` port instead of a literal path, so the connection is made once, in one
 place, and checked by the compiler.
 
@@ -407,8 +407,8 @@ Every directed test in the project respects this invariant by construction,
 because a human wrote each one and never thought to store over the code. It took
 a random generator scattering stores across low memory to expose it.
 
-**Fix** `data_base_for()` places the data window clear of the program, and `x1`
-is seeded to that base rather than to 0.
+**Fix** `compute_data_window_base()` places the data window clear of the
+program, and `x1` is seeded to that base rather than to 0.
 
 **The check now** The generator exits non-zero if Spike never retires the
 sentinel (`gen_stream.py:234`). That guard is doing real work: had the corrupted
@@ -455,10 +455,16 @@ the actual output instead of trusting the exit code.
 returns 0. A 4-state simulator returns X. Every such load mismatches, for a
 reason with nothing to do with the DUT.
 
-**Fix** A memory-zeroing prologue that stores 0 to every word the generated loads
-can reach. Deliberately done with **real stores rather than a backdoor write**,
-so the prologue sits inside the checked trace and verifies itself instead of
-being a trusted side-channel.
+**Original fix** A memory-zeroing prologue stored 0 to every word the generated
+loads could reach. It made the program self-contained, but 64 setup stores
+dominated every 40-instruction random stream.
+
+**Current fix** The UVM driver clears the full dmem array through a
+verification-only interface while reset is asserted. The interface is attached
+with `bind`, so `dmem.sv` remains synthesizable RAM with no hardware reset. The
+generator still constrains every access to `DATA_WINDOW_SIZE_BYTES`; Spike's
+zero-filled RAM and the explicitly cleared RTL RAM therefore start from the
+same state.
 
 ---
 

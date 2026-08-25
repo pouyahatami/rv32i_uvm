@@ -90,8 +90,10 @@ rtl/reset_sync.sv
 rtl/top.sv
 verif/sva/hazard_sva.sv
 verif/sva/hazard_sva_bind.sv
-verif/uvm/mem_backdoor_if.sv
-verif/uvm/mem_backdoor_bind.sv
+verif/uvm/imem_backdoor_if.sv
+verif/uvm/dmem_backdoor_if.sv
+verif/uvm/imem_backdoor_bind.sv
+verif/uvm/dmem_backdoor_bind.sv
 verif/uvm/rv32i_if.sv
 verif/uvm/rv32i_uvm_pkg.sv
 verif/uvm/tb_uvm_top.sv
@@ -155,9 +157,10 @@ scoreboard that checks nothing.
 The UVM log should end with something like:
 
 ```
-UVM_INFO ... [DRIVER] backdoor-loaded 147 instruction words
-UVM_INFO ... [SCOREBOARD] sentinel retired -- 136 instructions checked, 0 mismatches
-UVM_INFO ... [TEST] DONE -- 136 of 136 retirements checked, 0 mismatches
+UVM_INFO ... [DRIVER] zeroed data memory while reset was asserted
+UVM_INFO ... [DRIVER] backdoor-loaded 83 instruction words
+UVM_INFO ... [SCOREBOARD] sentinel retired -- 72 instructions checked, 0 mismatches
+UVM_INFO ... [TEST] DONE -- 72 of 72 retirements checked, 0 mismatches
 UVM_INFO ... [TEST] *** UVM TEST PASSED ***
 ```
 

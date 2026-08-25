@@ -22,11 +22,11 @@ both.
 | Verification code | 1,580 lines — UVM env (12 classes), bound SVA, directed testbenches |
 | Reference model | Spike, RISC-V International's ISA simulator |
 | Directed tests | 3 self-checking testbenches, each run under 2 simulators, all passing |
-| Random regression | 10 seeds, 136–147 instructions per seed, **0 mismatches, 0 errors of any kind** |
+| Random regression | 10 seeds, 72–83 instructions per seed, **0 mismatches, 0 errors of any kind** |
 | Pass criteria | UVM verdict **and** zero simulator errors — the second gate is where assertion failures land, and it is verified by a mutation test ([BUGS.md V12](docs/BUGS.md)) |
 | Checked per retirement | 4 axes — PC, instruction word, register writeback, store address + data — plus an explicit X/unknown check |
 | Assertions | 21 concurrent SVA properties + 14 cover properties, bound into the RTL, failure-gated in every flow |
-| Hazard-model coverage | 56/59 bins (94.9%) union across 10 seeds, 71–81% per seed — **a hazard-stimulus metric, not ISA closure**: the model has no bins for CSRs, traps, jumps, or operand corners |
+| Hazard-model coverage | 59/59 bins (100%) union across 10 seeds, 68–80% per seed — **a hazard-stimulus metric, not ISA closure**: the model has no bins for CSRs, traps, jumps, or operand corners |
 | Generator tests | 6 Python unit tests pinning the stream invariants the memory model depends on |
 | Bugs found and documented | 18 — 6 in the RTL, 12 in the verification code — see [docs/BUGS.md](docs/BUGS.md) |
 
@@ -77,9 +77,10 @@ that reason.
 ![UVM environment: Spike generates the program image and expected retirements ahead of the run, the driver backdoor-loads the program, the monitor samples one transaction per retirement from a read-only tap, and the scoreboard compares against Spike in order](images/uvm_env.png)
 
 The reference build on the left runs once, before simulation. The DUT on the
-right is the unmodified core -- the retirement tap is read-only and the
-program is loaded through a `bind`, so nothing in the environment reaches into
-the design.
+right is the unmodified core: the retirement tap is read-only, while
+verification-only interfaces attached with `bind` load the program and clear
+data memory while reset is asserted. No reset network or verification port is
+added to the synthesizable memories.
 
 The UVM environment runs under Questa Starter Edition:
 
@@ -94,9 +95,9 @@ is shown below:
 ![RV32I UVM and Spike verification flow: generate a hazard-biased program, run Spike offline, load the program through the UVM driver, monitor DUT retirements, compare them in the scoreboard, and collect functional coverage](images/riscv_uvm_verification_flow.png)
 
 Ten seeds pass with zero mismatches, zero `UVM_ERROR`, and zero simulator
-errors, checking 136-147 instructions each against Spike, at 71-81% of the
-59-bin hazard coverage model per seed. Across the ten, 56 of the 59 bins are
-hit -- 94.9%. That number measures hazard-stimulus quality against a model
+errors, checking 72-83 instructions each against Spike, at 68-80% of the
+59-bin hazard coverage model per seed. Across the ten, all 59 bins are hit.
+That number measures hazard-stimulus quality against a model
 built for the hazard machinery; it is not a claim of ISA-level coverage, which
 has no model yet (`docs/ROADMAP.md`).
 
@@ -105,12 +106,10 @@ count is zero -- bound-assertion failures land in the second count, not the
 first, and the regression's failure path is itself verified by a seeded
 always-false assertion (`docs/BUGS.md`, V12).
 
-The three that no seed reaches are `x_op_rs1.load_d{1,2,3}`: a load's base
-register is a dependency on a recent result. Every generated load uses `x1`, the
-reserved base pointer, which is never any instruction's destination, so the
-dependency cannot arise. That is a deliberate memory-safety invariant in
-`gen_stream.py`, not an oversight -- reaching those bins needs the generator to
-compute a base into a scratch register first, which `docs/ROADMAP.md` tracks.
+The `x_op_rs1.load_d{1,2,3}` bins are reached when an early body load consumes
+the `x1` base pointer written immediately before the body. The generator still
+never rewrites `x1` later; recurring dependent-base loads would need a bounded
+scratch pointer, which `docs/ROADMAP.md` tracks.
 
 The regression prints each hole by name rather than leaving it inside a
 percentage, so a gap has to be argued with rather than averaged away.

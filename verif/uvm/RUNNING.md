@@ -10,7 +10,7 @@ for why the reference model is Spike.
 ## Status
 
 Validated with Questa Altera Starter FPGA Edition 2025.2 on Windows: the
-checked-in stream completes 133 of 133 reference retirements with zero UVM
+checked-in stream completes 72 of 72 reference retirements with zero UVM
 warnings, errors, or fatals.
 
 ## Option A: Questa
@@ -58,7 +58,7 @@ Free, no licence, and the environment was originally written against it.
 3. Add the source files in this order. Dependencies flow top to bottom:
    `rv32i_pkg.sv` first because everything imports it, `retire_if.sv` before
    the UVM package that declares `virtual retire_if.MON`, and
-   `mem_backdoor_bind.sv` after both `imem.sv` and `mem_backdoor_if.sv`.
+   the imem/dmem backdoor bind files after their target modules and interfaces.
 
 ```
 rtl/rv32i_pkg.sv     rtl/cells.sv        rtl/regfile.sv     rtl/alu.sv
@@ -66,8 +66,9 @@ rtl/extend.sv        rtl/retire_if.sv    rtl/controller.sv  rtl/hazard_unit.sv
 rtl/csr_file.sv      rtl/clint.sv        rtl/uart_tx.sv     rtl/mem_bus.sv
 rtl/datapath.sv      rtl/debug_fsm.sv    rtl/riscv_pipe.sv  rtl/dmem.sv
 rtl/imem.sv          rtl/reset_sync.sv   rtl/top.sv
-verif/uvm/rv32i_if.sv           verif/uvm/mem_backdoor_if.sv
-verif/uvm/mem_backdoor_bind.sv  verif/uvm/rv32i_uvm_pkg.sv
+verif/uvm/rv32i_if.sv             verif/uvm/imem_backdoor_if.sv
+verif/uvm/dmem_backdoor_if.sv     verif/uvm/imem_backdoor_bind.sv
+verif/uvm/dmem_backdoor_bind.sv   verif/uvm/rv32i_uvm_pkg.sv
 verif/uvm/tb_uvm_top.sv
 ```
 
@@ -101,10 +102,11 @@ to run, and must be changed as a pair.
 ## What success looks like
 
 ```
-UVM_INFO ... [SCOREBOARD] loaded 133 reference retirements from stream_trace.txt
-UVM_INFO ... [DRIVER] backdoor-loaded 147 instruction words
-UVM_INFO ... [SCOREBOARD] sentinel retired -- 133 instructions checked, 0 mismatches
-UVM_INFO ... [TEST] DONE -- 133 of 133 retirements checked, 0 mismatches
+UVM_INFO ... [SCOREBOARD] loaded 72 reference retirements from stream_trace.txt
+UVM_INFO ... [DRIVER] zeroed data memory while reset was asserted
+UVM_INFO ... [DRIVER] backdoor-loaded 83 instruction words
+UVM_INFO ... [SCOREBOARD] sentinel retired -- 72 instructions checked, 0 mismatches
+UVM_INFO ... [TEST] DONE -- 72 of 72 retirements checked, 0 mismatches
 UVM_INFO ... [TEST] *** UVM TEST PASSED ***
 RV32I_UVM_VERDICT: PASS
 ```

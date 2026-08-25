@@ -26,26 +26,23 @@ bias only `rs1`, and only toward the immediately preceding destination. It now
 biases both source registers toward a uniformly chosen one of the last three
 *architectural producers* -- stores, branches and x0-writes push nothing, which
 was its own bug once (V14 in [BUGS.md](BUGS.md)). Measured on the same ten
-seeds across the three states of the generator:
+seeds across three generator states and the reset-time dmem initialization:
 
-| | rs1-only bias | both biased (phantom producers) | producers tracked correctly |
-|---|---|---|---|
-| per-seed coverage | 59-69% | 66-83% | 71-81% |
-| union across 10 seeds | 48/59, 81.4% | 56/59, 94.9% | **56/59, 94.9%** |
-| bins no seed reached | 11 | 3 | 3 |
+| | rs1-only bias | both biased (phantom producers) | producers tracked correctly | reset-time dmem clear |
+|---|---|---|---|---|
+| per-seed coverage | 59-69% | 66-83% | 71-81% | 68-80% |
+| union across 10 seeds | 48/59, 81.4% | 56/59, 94.9% | 56/59, 94.9% | **59/59, 100%** |
+| bins no seed reached | 11 | 3 | 3 | 0 |
 
 The generator's invariants are now pinned by `verif/spike/test_gen_stream.py`.
 
-Three bins remain unreachable, and they are all the same gap:
-`x_op_rs1.load_d{1,2,3}` -- a load whose *base* register depends on a recent
-result. Every generated load addresses off `x1`, the reserved base pointer,
-which is deliberately never a destination, because that invariant is what keeps
-generated stores off the program image (see V4 in [BUGS.md](BUGS.md)). Closing
-these needs the generator to emit a safe dependent base -- `ADDI rt, x1, off`
-followed by a load off `rt` -- which keeps the bound on the address while making
-the base a real dependency. That is the next generator change, and it must not
-be made casually: it touches the one invariant protecting the whole memory
-model.
+No hazard-model bin remains unreachable across the ten seeds. Removing the
+64-store memory prologue put the `x1` base-pointer write immediately before the
+random body, so early loads now reach `x_op_rs1.load_d{1,2,3}`. Those hits are
+confined to program startup: recurring dependent-base loads still need the
+generator to emit a safe scratch base -- `ADDI rt, x1, off` followed by a load
+off `rt`. That change must preserve the invariant keeping generated stores off
+the program image (see V4 in [BUGS.md](BUGS.md)).
 
 **Stimulate the jump and upper-immediate opcodes.** `gen_stream.py` emits no
 JAL, JALR, LUI or AUIPC, so the `opcode_out_of_scope` group sits at zero by

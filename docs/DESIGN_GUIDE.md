@@ -379,7 +379,7 @@ eliminating it or excluding it from the comparison. For this project:
 | Difference | How it is handled |
 |---|---|
 | Harvard versus von Neumann memory | data window placed past the code image |
-| Uninitialised data memory, 0 versus X | prologue stores zeros before any load |
+| Uninitialised data memory, 0 versus X | UVM driver clears dmem through a verification-only `bind` while reset is asserted |
 | Spike's boot ROM leaves registers set | prologue zeros `x2`–`x30` |
 | Spike's boot ROM retirements | trimmed from the trace |
 | Spike's debug module and boot ROM sit at address 0 | two `platform.h` constants relocated |
