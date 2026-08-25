@@ -59,8 +59,8 @@ class rv32i_monitor extends uvm_monitor;
               "unknown value on retirement interface: pc=%h instr=%h rd=%0d wdata=%h regwrite=%b store_valid=%b",
               txn.pc, txn.instr, txn.rd, txn.wdata, txn.regwrite, txn.store_valid))
 
-        if (txn.regwrite === 1'b1 && txn.rd === SENTINEL_REG &&
-            txn.wdata === SENTINEL_VAL)
+        if (txn.regwrite === 1'b1 && txn.rd === COMPLETION_GPR &&
+            txn.wdata === COMPLETION_VALUE)
           finished = 1'b1;
 
         ap.write(txn);

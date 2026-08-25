@@ -239,7 +239,8 @@ class rv32i_scoreboard extends uvm_scoreboard;
 
     num_checked++;
 
-    if (t.regwrite && (t.rd == SENTINEL_REG) && (t.wdata == SENTINEL_VAL)) begin
+    if (t.regwrite && (t.rd == COMPLETION_GPR) &&
+        (t.wdata == COMPLETION_VALUE)) begin
       checker_state = CHECKER_FINISHED;
       `uvm_info("SCOREBOARD",
         $sformatf("sentinel retired -- %0d instructions checked, %0d mismatches",

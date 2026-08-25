@@ -4,9 +4,9 @@
 //
 // Subscribes to the same retirement stream the scoreboard checks. The
 // scoreboard answers "was the DUT right?"; this answers "about what?" -- and
-// without it a passing run reports 133 instructions with no way to tell
-// whether those 133 covered the forwarding paths this design exists to
-// implement, or were 133 independent ADDs.
+// without it a passing run reports a retirement count with no way to tell
+// whether those instructions covered the forwarding paths this design exists
+// to implement, or were merely independent ADDs.
 //
 // -----------------------------------------------------------------------------
 // WHY THERE ARE TWO IMPLEMENTATIONS OF ONE COVERAGE MODEL
@@ -277,8 +277,8 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
 
     if (t.regwrite) begin
       if      (t.rd == 5'd0)          hit("rd.x0");
-      else if (t.rd == SAFE_BASE_REG) hit("rd.base_ptr");
-      else if (t.rd == SENTINEL_REG)  hit("rd.sentinel");
+      else if (t.rd == DATA_BASE_GPR)  hit("rd.base_ptr");
+      else if (t.rd == COMPLETION_GPR) hit("rd.sentinel");
       else                            hit("rd.general");
     end
 
@@ -338,7 +338,8 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
     prev_is_load[1] = prev_is_load[0];
     prev_is_load[0] = (opcode == OP_LOAD);
 
-    if (t.regwrite && (t.rd == SENTINEL_REG) && (t.wdata == SENTINEL_VAL))
+    if (t.regwrite && (t.rd == COMPLETION_GPR) &&
+        (t.wdata == COMPLETION_VALUE))
       finished = 1'b1;
   endfunction
 
@@ -418,8 +419,8 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
 
     cp_rd : coverpoint rd iff (writes_reg) {
       bins x0       = {0};
-      bins base_ptr = {SAFE_BASE_REG};
-      bins sentinel = {SENTINEL_REG};
+      bins base_ptr = {DATA_BASE_GPR};
+      bins sentinel = {COMPLETION_GPR};
       bins general  = {[2:30]};
     }
 
