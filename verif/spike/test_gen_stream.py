@@ -56,7 +56,7 @@ WRITING_OPCODES = {g.OP_RTYPE, g.OP_ITYPE, g.OP_LOAD}
 
 def body_of(words, random_instr_count):
     """The randomly generated slice: after the prologue, before pad+sentinel."""
-    prologue = g.REG_INIT_WORDS + 1
+    prologue = len(g.USABLE_GPRS) + 1
     return words[prologue:prologue + random_instr_count]
 
 

@@ -48,8 +48,13 @@ MAX_ADDI_IMMEDIATE = 2047                      # x1 is set with a single ADDI by
 RECENT_RESULT_BIAS_PERCENT = 60                # Chance a source register is a
                                                # recent destination; see
                                                # biased_src().
-REG_INIT_REGS = range(2, 31)                   # x2..x30.
-REG_INIT_WORDS = len(REG_INIT_REGS)
+USABLE_GPRS = range(2, 31)                     # x2..x30: the registers the
+                                               # random body may freely read
+                                               # and clobber -- everything but
+                                               # x0, the x1 base pointer, and
+                                               # the x31 sentinel.
+DEST_GPRS = [0, *USABLE_GPRS]                  # rd pool: x0 plus x2..x30 --
+                                               # never x1 or x31.
 ENTRY_PC = 0x0                                 # The core's reset vector.
 
 
@@ -65,7 +70,7 @@ def compute_data_window_base(random_instr_count):
     """
     # The two +1 terms below account for the x1 data-base initialization and
     # the x31 completion instruction, indicating program start and completion.
-    program_word_count = (REG_INIT_WORDS + 1 + random_instr_count
+    program_word_count = (len(USABLE_GPRS) + 1 + random_instr_count
                           + PAD_WORDS + 1)
     program_size_bytes = program_word_count * 4
     data_window_base = ((program_size_bytes + 255) // 256 + 1) * 256
@@ -115,51 +120,24 @@ def enc_b(opcode, funct3, rs1, rs2, imm13):
            (((imm13 >> 1) & 0xF) << 8) | (((imm13 >> 11) & 1) << 7) | opcode
 
 def generate(rng, random_instr_count):
-    """Build a stream that is legal by construction.
-
-    This means it needs no post-hoc constraints.
-
-    x1 is a reserved base pointer -- never any instruction's destination -- so
-    every load/store offset is known here to be small, aligned, and clear of the
-    MMIO window. Branches only ever go forward, by a bounded amount. The last
-    instruction is a sentinel the scoreboard watches for.
-    """
+    """Build a program that is safe by construction: loads/stores only go
+    through the reserved x1 base, branches only jump forward a bounded amount,
+    and the last instruction is the sentinel the scoreboard watches for."""
     data_window_base = compute_data_window_base(random_instr_count)
 
-    # Register-zeroing prologue. Spike's boot ROM leaves state behind before
-    # jumping to the ELF entry (notably x11 = dtb pointer); the DUT resets
-    # straight to PC 0 and runs none of it. Reading such a register before
-    # writing it would diverge for reasons unrelated to the DUT, and would look
-    # exactly like a forwarding bug. x1 is set below; x31 is the sentinel and is
-    # never read by the body, so neither needs zeroing here.
-    words = [enc_i(OP_ITYPE, r, 0b000, 0, 0) for r in REG_INIT_REGS]
+    # Zero x2..x30 so Spike and the DUT start the body with identical registers
+    # One "addi rN, x0, 0" per register
+    words = [enc_i(OP_ITYPE, r, 0b000, 0, 0) for r in USABLE_GPRS]
 
-    # x1 = the data base pointer. It is deliberately not 0; see
-    # compute_data_window_base().
+    # x1 = the data base pointer
     words.append(enc_i(OP_ITYPE, DATA_BASE_GPR, 0b000, 0,
                        data_window_base))
 
-    # The UVM driver clears dmem through a verification-only backdoor while
-    # reset is asserted. Spike also starts RAM at zero, so loads from the data
-    # window now agree without spending 64 retired stores on initialization.
+    # dmem needs no init: the UVM driver backdoor-clears it, Spike zeroes RAM.
 
-    # The architectural producers among the last three instructions, most
-    # recent first. A slot holds the destination register if that instruction
-    # actually wrote one, else 0: stores and branches write no register, and a
-    # write to x0 writes nothing, so none of those is a producer a later
-    # instruction could depend on.
-    #
-    # Tracking that distinction matters, not just the raw rd fields. An
-    # earlier version pushed rd unconditionally, so after a store or branch
-    # the bias pointed at a register the instruction never wrote -- a phantom
-    # producer. The bias percentage the comments claimed was then not the bias
-    # the generator delivered, and the coverage distances were diluted by
-    # dependencies on registers whose "producer" produced nothing.
-    #
-    # Dependency DISTANCE is what selects the mechanism under test: distance 1
-    # and 2 are the two forwarding paths, and distance 3 is the register-file
-    # read-during-write bypass -- the gap between those two mechanisms, and a
-    # real bug once (docs/BUGS.md, D4).
+    # rd of the last three instructions, newest first (0 = wrote no register);
+    # biased_src() reuses these to hit both forwarding paths and the regfile
+    # bypass (docs/BUGS.md, D4).
     recent_rd = [DATA_BASE_GPR, 0, 0]
 
     def biased_src():
@@ -182,24 +160,30 @@ def generate(rng, random_instr_count):
         return rng.randrange(31)
 
     for _ in range(random_instr_count):
+        # cls 0..99 picks the instruction class by weight:
+        # 30% R-type, 25% I-type ALU, 20% load, 15% store, 10% branch
         cls = rng.randrange(100)
         rs1 = biased_src()
         rs2 = biased_src()
-        rd = rng.randrange(31)
-        while rd in (DATA_BASE_GPR, COMPLETION_GPR):
-            rd = rng.randrange(31)
+        rd = rng.choice(DEST_GPRS)
 
         if cls < 30:                                        # R-type
             funct3 = rng.randrange(8)
+            # funct7 bit 30 turns ADD into SUB and SRL into SRA; it must be
+            # 0 for every other funct3.
             if funct3 in (0b000, 0b101):
                 funct7 = 0b0100000 if rng.randrange(2) else 0b0000000
             else:
                 funct7 = 0
             words.append(enc_r(OP_RTYPE, rd, funct3, rs1, rs2, funct7))
         elif cls < 55:                                      # I-type ALU
+            # ADDI SLTI SLTIU XORI ORI ANDI; shifts (001, 101) are left out
+            # because their immediate is a shift amount, not a plain 12 bits.
             funct3 = [0b000, 0b010, 0b011, 0b100, 0b110, 0b111][rng.randrange(6)]
             words.append(enc_i(OP_ITYPE, rd, funct3, rs1, rng.randrange(4096)))
         elif cls < 75:                                      # LOAD off x1
+            # (funct3, offset) per width -- LW LH LHU LB LBU -- with the
+            # offset aligned to that width and inside the 256-byte window.
             funct3, off = [
                 (0b010, rng.randrange(64) * 4),
                 (0b001, rng.randrange(128) * 2),
@@ -209,6 +193,7 @@ def generate(rng, random_instr_count):
             ][rng.randrange(5)]
             words.append(enc_i(OP_LOAD, rd, funct3, DATA_BASE_GPR, off))
         elif cls < 90:                                      # STORE off x1
+            # Same scheme for SW SH SB.
             funct3, off = [
                 (0b010, rng.randrange(64) * 4),
                 (0b001, rng.randrange(128) * 2),
@@ -216,6 +201,8 @@ def generate(rng, random_instr_count):
             ][rng.randrange(3)]
             words.append(enc_s(OP_STORE, funct3, DATA_BASE_GPR, rs2, off))
         else:                                               # BRANCH, forward only
+            # BEQ or BNE, jumping forward 16, 32 or 48 bytes 
+            # (PAD_WORDS guarantees the target is inside the program)
             funct3 = 0b001 if rng.randrange(2) else 0b000
             words.append(enc_b(OP_BRANCH, funct3, rs1, rs2,
                                rng.randint(1, 3) * 16))
