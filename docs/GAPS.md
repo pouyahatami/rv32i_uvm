@@ -69,6 +69,37 @@ let `test_gen_stream.py` test the bias distribution directly instead of only
 through generated programs. Worth doing the next time the generator is
 touched for any other reason; not worth a standalone churn commit.
 
+## The stimulus path is UVM ceremony around a file copy
+
+The sequence reads `stream.hex`, wraps each 32-bit word in a
+`uvm_sequence_item`, and pushes it through a sequencer to a driver that writes
+it into the imem array in zero simulation time while reset is held. There is
+no protocol, no timing, no randomization and no reactivity anywhere on that
+path -- functionally it is `$readmemh` carrying three classes of overhead.
+"What does the sequencer buy you here?" is a fair question, and the code
+currently gives no answer.
+
+What the ceremony buys today is structural, not functional: the program
+arrives through the standard UVM stimulus path, so a future front-door driver
+-- one that loads over a real bus with real timing, or a reactive sequence
+that responds to DUT state -- slots into the existing agent instead of
+requiring the environment to grow one. That is a defensible position, but it
+is a bet on future work, and it should be stated where the ceremony lives
+(the package header or the sequence) rather than left for a reader to
+reconstruct.
+
+Two related conventions would draw the same interview probe: the transactions
+use `uvm_field_int(UVM_ALL_ON)` field macros, which many teams ban outright
+for their compile-time and runtime cost (hand-written `do_copy`/`do_print` is
+the usual house style), and the agent has no active/passive configuration --
+it is always active, which is true today and unenforced tomorrow.
+
+**To close it:** either write the future-driver rationale into
+`rv32i_uvm_pkg.sv`'s header and accept the overhead knowingly, or collapse
+the load into the driver reading the file directly and delete the sequence,
+sequencer and transaction. The middle ground -- keeping the ceremony with no
+stated reason -- is the only wrong option.
+
 ## Why are shifts left out of the I-type pool?
 
 They are only half left out. Register-register shifts (SLL, SRL, SRA) are
