@@ -2,8 +2,8 @@ class rv32i_random_test extends uvm_test;
   `uvm_component_utils(rv32i_random_test)
 
   // Generous: the default 40-instruction stream retires in a few hundred
-  // cycles including the register-zeroing and memory-zeroing prologues, so
-  // this only fires on a genuine hang, never on a slow but healthy run.
+  // cycles including the register-zeroing prologue, so this only fires on a
+  // genuine hang, never on a slow but healthy run.
   localparam int unsigned WATCHDOG_CYCLES = 100000;
 
   rv32i_env env;

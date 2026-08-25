@@ -3,10 +3,9 @@
 //
 // UVM entry point. Instantiates the DUT completely unmodified (same
 // top.sv used by rtl/tb_pipe.sv's directed tests), then grabs virtual
-// interface handles to two things the DUT ALREADY instantiates internally
-// -- rtl/retire_if.sv's `retire` instance and the backdoor interface
-// mem_backdoor_bind.sv attaches to imem -- via plain hierarchical
-// reference. No port was added to top.sv/riscv_pipe.sv/imem.sv for any
+// interface handles to three verification hooks: rtl/retire_if.sv's `retire`
+// instance and the interfaces imem_backdoor_bind.sv and dmem_backdoor_bind.sv
+// attach to imem and dmem. No port was added to the synthesizable modules for
 // of this; the synthesizable RTL file list for this environment is
 // identical to rtl/tb_pipe.sv's.
 // =============================================================================
@@ -45,16 +44,20 @@ module tb_uvm_top;
 
   initial begin
     virtual retire_if.MON   retire_vif;
-    virtual mem_backdoor_if bd_vif;
+    virtual imem_backdoor_if imem_bd_vif;
+    virtual dmem_backdoor_if dmem_bd_vif;
 
     // grab handles to interfaces the DUT itself already instantiates --
     // see file header.
     retire_vif = dut.rvpipe.retire;
-    bd_vif     = dut.imem.backdoor;
+    imem_bd_vif = dut.imem.imem_backdoor;
+    dmem_bd_vif = dut.bus.dmem_inst.dmem_backdoor;
 
     uvm_config_db#(virtual rv32i_if)::set(null, "*", "vif", vif);
     uvm_config_db#(virtual retire_if.MON)::set(null, "*", "retire_vif", retire_vif);
-    uvm_config_db#(virtual mem_backdoor_if)::set(null, "*", "bd_vif", bd_vif);
+    uvm_config_db#(virtual imem_backdoor_if)::set(
+        null, "*", "imem_bd_vif", imem_bd_vif);
+    uvm_config_db#(virtual dmem_backdoor_if)::set(null, "*", "dmem_bd_vif", dmem_bd_vif);
 
     // Default test hardcoded so this runs with zero required plusargs on
     // a first attempt -- run_test() still honors a +UVM_TESTNAME override

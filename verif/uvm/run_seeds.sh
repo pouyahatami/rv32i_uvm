@@ -54,7 +54,8 @@ FILES="
   $RTL/clint.sv $RTL/uart_tx.sv $RTL/mem_bus.sv $RTL/imem.sv
   $RTL/reset_sync.sv $RTL/top.sv
   $ROOT/verif/sva/hazard_sva.sv $ROOT/verif/sva/hazard_sva_bind.sv
-  $UVM/mem_backdoor_if.sv $UVM/mem_backdoor_bind.sv $UVM/rv32i_if.sv
+  $UVM/imem_backdoor_if.sv $UVM/dmem_backdoor_if.sv
+  $UVM/imem_backdoor_bind.sv $UVM/dmem_backdoor_bind.sv $UVM/rv32i_if.sv
   $UVM/rv32i_uvm_pkg.sv $UVM/tb_uvm_top.sv
 "
 

@@ -3,8 +3,9 @@
 //
 // SystemVerilog assertions for the hazard/forwarding unit, bound into
 // hazard_unit.sv rather than written inside it (see hazard_sva_bind.sv).
-// Same philosophy as mem_backdoor_if.sv: the synthesizable RTL is never
-// touched by verification code, and nothing here can reach a netlist.
+// Same philosophy as imem_backdoor_if.sv and dmem_backdoor_if.sv: the
+// synthesizable RTL is never touched by verification code, and nothing here
+// can reach a netlist.
 //
 // WHY BIND RATHER THAN `ifdef INSIDE THE RTL
 // An `ifdef ASSERT_ON block inside hazard_unit.sv would put verification code

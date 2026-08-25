@@ -36,8 +36,8 @@ set build $here/build
 #
 # rv32i_pkg.sv must come first: every other RTL file imports it. retire_if.sv
 # must precede rv32i_uvm_pkg.sv, which declares `virtual retire_if.MON`.
-# mem_backdoor_bind.sv must follow both imem.sv (the bind target) and
-# mem_backdoor_if.sv (the bound interface).
+# The imem/dmem backdoor bind files must follow their target modules and
+# bound interfaces.
 #
 # RTL_ONLY_NO_CLOCKING is deliberately NOT defined here. It exists for Icarus
 # and Verilator, neither of which can parse a clocking block inside an
@@ -53,8 +53,9 @@ set rtl_files [list \
   $root/verif/sva/hazard_sva.sv $root/verif/sva/hazard_sva_bind.sv]
 
 set uvm_files [list \
-  $here/rv32i_if.sv          $here/mem_backdoor_if.sv \
-  $here/mem_backdoor_bind.sv $here/rv32i_uvm_pkg.sv \
+  $here/rv32i_if.sv            $here/imem_backdoor_if.sv \
+  $here/dmem_backdoor_if.sv    $here/imem_backdoor_bind.sv \
+  $here/dmem_backdoor_bind.sv  $here/rv32i_uvm_pkg.sv \
   $here/tb_uvm_top.sv]
 
 # ---- run directory -----------------------------------------------------

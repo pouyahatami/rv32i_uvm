@@ -6,7 +6,7 @@
 // default RAM size.
 //
 // The UVM environment writes this array directly through a bound interface
-// rather than via $readmemh; see verif/uvm/mem_backdoor_bind.sv. Nothing in
+// rather than via $readmemh; see verif/uvm/imem_backdoor_bind.sv. Nothing in
 // this file knows about that, which is the point of using `bind`.
 // =============================================================================
 

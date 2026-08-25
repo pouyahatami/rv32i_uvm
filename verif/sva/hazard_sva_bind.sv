@@ -3,9 +3,10 @@
 //
 // Binds hazard_sva into every riscv_pipe instance. Compilation-unit scope, so
 // it needs -mfcu (see run_uvm.sh's note on the same requirement for
-// mem_backdoor_bind.sv) -- without a shared compilation unit Questa warns the
-// bind may not elaborate, and an assertion module that silently does not exist
-// is worse than no assertions, because the run still looks clean.
+// imem_backdoor_bind.sv/dmem_backdoor_bind.sv) -- without a shared compilation
+// unit Questa warns the bind may not elaborate, and an assertion module that
+// silently does not exist is worse than no assertions, because the run still
+// looks clean.
 //
 // BOUND INTO riscv_pipe, NOT hazard_unit, and the reason is instructive.
 // hazard_unit is purely combinational: no clk, no reset, nothing to sample on.

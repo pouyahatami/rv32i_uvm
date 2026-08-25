@@ -6,7 +6,7 @@
 // commit boundary -- this interface is the *drive* side, and the only
 // thing this verification environment is allowed to force onto the DUT
 // is reset. Everything else the driver does (loading a program into
-// memory) goes through mem_backdoor_if.sv instead of a synthesizable
+// memory) goes through imem_backdoor_if.sv instead of a synthesizable
 // port, so this interface can never be mistaken for adding a new
 // synthesizable input to the CPU.
 // =============================================================================

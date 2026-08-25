@@ -49,17 +49,20 @@ FILES="
   $RTL/top.sv
   $ROOT/verif/sva/hazard_sva.sv
   $ROOT/verif/sva/hazard_sva_bind.sv
-  $UVM/mem_backdoor_if.sv
-  $UVM/mem_backdoor_bind.sv
+  $UVM/imem_backdoor_if.sv
+  $UVM/dmem_backdoor_if.sv
+  $UVM/imem_backdoor_bind.sv
+  $UVM/dmem_backdoor_bind.sv
   $UVM/rv32i_if.sv
   $UVM/rv32i_uvm_pkg.sv
   $UVM/tb_uvm_top.sv
 "
 
 "$QUESTA/win64/vlib" work
-# -mfcu/-cuname: mem_backdoor_bind.sv's `bind` sits at compilation-unit scope.
+# -mfcu/-cuname: the memory backdoor `bind` statements sit at compilation-unit
+# scope.
 # Without a single shared compilation unit Questa warns (vlog-2650) that the
-# bind may not elaborate at all -- which would make dut.imem.backdoor, the
+# bind may not elaborate at all -- which would make dut.imem.imem_backdoor, the
 # driver's only way to load a program, silently not exist.
 # +incdir+$UVM: rv32i_uvm_pkg.sv is a manifest of `include "src/*.svh" lines,
 # one class per file. Without this the package can't find them.
@@ -73,7 +76,7 @@ FILES="
 #     systematic mismatch produces an error every 10ns forever. Quit after 20.
 #   run 500us (not -all) -- the test ends by waiting on the scoreboard's `done`
 #     event, so anything that stops that event from firing hangs `run -all`
-#     until UVM's 9200s default timeout. The program is ~160 cycles; 500us is
+#     until UVM's 9200s default timeout. The program is ~100 cycles; 500us is
 #     50,000 cycles, generous by any measure, and bounds the wreckage.
 SIM_ARGS="+UVM_MAX_QUIT_COUNT=20"
 

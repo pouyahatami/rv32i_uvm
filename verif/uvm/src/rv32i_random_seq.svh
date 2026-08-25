@@ -14,7 +14,10 @@
 //    riscv-dv uses. x1 points PAST the end of the program image, never at 0:
 //    the DUT is Harvard and Spike is von Neumann, so stores into low memory
 //    would corrupt Spike's copy of the program and not the DUT's. See
-//    data_base_for() in gen_stream.py, which exists for that reason.
+//    compute_data_window_base() in gen_stream.py, which exists for that reason.
+//  - the driver clears dmem through a verification-only backdoor while reset
+//    is asserted. This gives Spike and a 4-state RTL simulator the same known
+//    contents without a 64-store initialization prologue.
 //  - branches only ever jump forward by a small bounded amount, and padding
 //    NOPs before the sentinel keep every branch target inside the program.
 //  - the last instruction is a fixed sentinel (rd=x31, a recognisable
