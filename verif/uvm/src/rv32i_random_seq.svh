@@ -5,8 +5,13 @@
 //
 // The generation policy lives in gen_stream.py. Summarised, because it is
 // what makes the stream legal without post-hoc constraints:
-//  - ~40% of instructions take rs1 from the previous instruction's rd, so
-//    RAW hazards appear far more often than uniform-random choice gives.
+//  - 60% of source-register picks target one of the last three architectural
+//    producers, so RAW hazards at all three forwarding distances appear far
+//    more often than uniform-random choice gives. Stores, branches and
+//    x0-writes produce nothing and are not counted as producers.
+//  - control transfers (BEQ/BNE, JAL, and JALR paired with the AUIPC that
+//    pins its base) only ever jump forward by a bounded amount, so a target
+//    is always a later instruction inside the padded program.
 //  - x1 is reserved as a safe base pointer for every load and store, and is
 //    never another instruction's destination, so every offset is known at
 //    generation time to be small, aligned, and clear of the MMIO window at

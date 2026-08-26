@@ -18,12 +18,13 @@
 // core-v-verif).
 //
 // Scope, stated explicitly rather than left implicit: the stream covers
-// R-type ALU, I-type ALU excluding shift-immediate, LOAD, STORE, and
-// forward-only BRANCH. JAL/JALR/LUI/AUIPC/SYSTEM (ECALL, CSR ops, MRET) are
-// out of scope, which is a bounded extension rather than a gap that was
-// missed. Excluding SYSTEM means this environment does not exercise the
-// trap/interrupt/CSR machinery at all; tb_pipe_csr in rtl/tb_pipe.sv is the
-// directed test covering that path.
+// R-type ALU, the full I-type ALU set including the immediate shifts, LOAD,
+// STORE, forward-only BRANCH, forward-only JAL, AUIPC-paired JALR, and LUI.
+// SYSTEM (ECALL, CSR ops, MRET) is out of scope, which is a bounded extension
+// rather than a gap that was missed: excluding it means this environment does
+// not exercise the trap/interrupt/CSR machinery at all, and tb_pipe_csr in
+// rtl/tb_pipe.sv is the directed test covering that path. docs/VMATRIX.md
+// maps every feature to what actually checks it.
 //
 // Nothing here randomizes at simulation time -- the stream is generated in
 // Python. That is why the environment runs under licences that withhold

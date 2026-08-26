@@ -100,31 +100,48 @@ the load into the driver reading the file directly and delete the sequence,
 sequencer and transaction. The middle ground -- keeping the ceremony with no
 stated reason -- is the only wrong option.
 
-## Why are shifts left out of the I-type pool?
+## Why were shifts once left out of the I-type pool? (closed)
 
-They are only half left out. Register-register shifts (SLL, SRL, SRA) are
-generated: the R-type arm draws `funct3` from all eight values, and handles
-the funct7 bit that splits SRL from SRA. What is never generated is the
-immediate forms -- SLLI, SRLI, SRAI.
+Kept here because the reasoning is the reason the fix looks the way it does.
 
-The reason is the encoding. For every other I-type ALU op the top 12 bits are
-a plain immediate and any value of `randrange(4096)` is legal. For shifts,
-bits [4:0] of that field are the shift amount and bits [11:5] are required to
-be `0000000` (SLLI, SRLI) or `0100000` (SRAI); every other upper-bit pattern
-is a reserved encoding in RV32I. Drawing a random 12-bit immediate would
-produce illegal encodings that Spike traps on but the DUT happily executes --
-`controller.sv` deliberately does not decode bogus funct7 patterns (see its
-header comment), and its ALU decoder looks only at bit 30 -- a guaranteed
-lockstep divergence that says nothing about the pipeline. Rather than special-case the immediate, the generator drops
-those two funct3 values from the I-type pool.
+SLLI, SRLI and SRAI used to be excluded while the register-register shifts
+were generated. The cause was the encoding: for every other I-type ALU op the
+top 12 bits are a plain immediate and any `randrange(4096)` is legal, but for
+shifts bits [4:0] are the shift amount and bits [11:5] must be `0000000`
+(SLLI, SRLI) or `0100000` (SRAI). Every other upper-bit pattern is a reserved
+encoding. Drawing a random 12-bit immediate would emit illegal encodings that
+Spike traps on but the DUT happily executes -- `controller.sv` deliberately
+does not decode bogus funct7 patterns (see its header) and its ALU decoder
+looks only at bit 30 -- so the two models would diverge for a reason that says
+nothing about the pipeline.
 
-**The cost:** shift-immediate decode and the shamt path through the immediate
-extender are never exercised by the random stream (the directed tests cover
-them). Shift amounts still vary via the R-type forms, but only through
-whatever values registers happen to hold.
+The I-type arm now draws the shift amount and sets the upper bits explicitly,
+the same funct7 trick the R-type arm already used, so all three immediate
+shifts are generated legally. `alu.slli/srli/srai` are coverage bins.
 
-**To close it:** add a sixth-ish arm that picks `funct3` from {001, 101},
-draws `shamt = rng.randrange(32)`, and sets the upper seven bits to
-`0000000`, or `0100000` for the SRAI case -- the same funct7 trick the R-type
-arm already does. Small, safe, and it would let the coverage model grow
-shift-immediate bins.
+**What remains:** the reserved encodings themselves are still never generated,
+so the DUT's response to an illegal shift immediate is unverified -- and by
+`controller.sv`'s own admission it does not detect them. That is an
+illegal-instruction-detection gap, not a shift gap, and closing it needs the
+scoreboard to model trap behaviour rather than the generator to emit more
+shifts.
+
+## Misalignment is claimed three different ways
+
+`test_gen_stream.py` asserts every generated access is naturally aligned and
+says a misaligned one "would trap on the DUT and not on Spike". `dmem.sv`
+silently masks the low address bits, so an odd-address LH reads the aligned
+halfword rather than trapping. `tb_pipe_csr` exercises a misaligned-load and
+misaligned-store trap and passes against Spike, which means the trap is
+detected before dmem sees the access.
+
+Those three statements cannot all describe the same design. The most likely
+reading is that `datapath.sv` raises the misaligned exception and dmem's
+masking is dead defensive logic, in which case the test's comment is wrong and
+harmless. Nobody has confirmed it by experiment, which is the actual gap: an
+invariant the generator relies on is documented from memory rather than from a
+run.
+
+**To close it:** one directed check that issues a misaligned load and asserts
+the trap fires with the right `mcause`/`mtval`, then correct whichever comment
+is wrong.

@@ -177,13 +177,14 @@ module hazard_sva (
   // instructions executed for real (docs/BUGS.md, D5). These close the
   // converse.
   //
-  // HONESTY NOTE ON VACUITY: the generated UVM stream currently contains no
-  // jumps, traps, mret, or debug traffic, so under that stimulus these pass
-  // vacuously -- the cover properties below them are what make that visible
-  // in a report rather than invisible in a pass. They are non-vacuous under
-  // any stimulus that exercises the machinery (tb_pipe_debug's sequence,
-  // once a licensed-simulator directed flow binds this file, or a generated
-  // stream that gains SYSTEM/jump support -- docs/ROADMAP.md tracks both).
+  // HONESTY NOTE ON VACUITY: the generated UVM stream contains JAL and JALR,
+  // so a_jump_flushes and the PCSrcE properties are exercised by it. It
+  // contains no traps, mret or debug traffic, so those three still pass
+  // vacuously under random stimulus and are non-vacuous only under the
+  // directed tests (tb_pipe_csr, tb_pipe_debug) -- which do not currently
+  // bind this file. The cover properties below are what make that difference
+  // visible in a report rather than invisible in a pass, and nothing collects
+  // them yet (docs/VMATRIX.md tracks both gaps).
   a_jump_flushes:       assert property (JumpD      |-> FlushD);
   a_mret_flushes:       assert property (mret_enE   |-> FlushD && FlushE);
   a_enterdebug_flushes: assert property (EnterDebug |-> FlushD && FlushE && FlushM);

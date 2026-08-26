@@ -43,6 +43,15 @@ BUILD=$UVM/build_seeds
 WROOT=$(echo "$ROOT" | sed 's|^/\([a-zA-Z]\)/|/mnt/\1/|')
 SPIKE=${SPIKE:-\$HOME/.local/spike/bin/spike}
 
+# Check Spike once, here, rather than letting every seed fail generation in
+# turn with the same error buried in its own log file.
+if ! wsl -d Ubuntu -- bash -lc "command -v $SPIKE >/dev/null 2>&1"; then
+  echo "spike not found in WSL at: $SPIKE"
+  echo "set SPIKE=<path> (see verif/spike/README.md for building it, including"
+  echo "the two platform.h constants that have to move for a core that resets to 0)"
+  exit 1
+fi
+
 rm -rf "$BUILD"; mkdir -p "$BUILD"
 cp "$RTL/riscvtest_pipe.txt" "$BUILD/"   # imem's $readmemh at time 0
 cd "$BUILD"
