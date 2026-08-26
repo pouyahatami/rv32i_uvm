@@ -13,28 +13,10 @@ Runs three self-checking testbenches under both Icarus Verilog and Verilator,
 whichever are installed, and reports PASS/FAIL per testbench. All three pass on
 both.
 
-## By the numbers
-
-| | |
-|---|---|
-| Core | RV32I, 5-stage, forwarding + load-use interlock, M-mode CSRs, traps, timer interrupt, debug halt/resume |
-| Synthesizable RTL | 2,098 lines, 19 files, 25 modules |
-| Verification code | 1,580 lines — UVM env (12 classes), bound SVA, directed testbenches |
-| Reference model | Spike, RISC-V International's ISA simulator |
-| Directed tests | 3 self-checking testbenches, each run under 2 simulators, all passing |
-| Random regression | 10 seeds, 72–83 instructions per seed, **0 mismatches, 0 errors of any kind** |
-| Pass criteria | UVM verdict **and** zero simulator errors — the second gate is where assertion failures land, and it is verified by a mutation test ([BUGS.md V12](docs/BUGS.md)) |
-| Checked per retirement | 4 axes — PC, instruction word, register writeback, store address + data — plus an explicit X/unknown check |
-| Assertions | 21 concurrent SVA properties + 14 cover properties, bound into the RTL, failure-gated in every flow |
-| Hazard-model coverage | 59/59 bins (100%) union across 10 seeds, 68–80% per seed — **a hazard-stimulus metric, not ISA closure**: the model has no bins for CSRs, traps, jumps, or operand corners |
-| Generator tests | 6 Python unit tests pinning the stream invariants the memory model depends on |
-| Bugs found and documented | 18 — 6 in the RTL, 12 in the verification code — see [docs/BUGS.md](docs/BUGS.md) |
-
-Reproduce with `verif/uvm/run_seeds.sh 10`, which prints every figure above and
-names each unhit bin. What is *not* claimed is in
-[docs/ROADMAP.md](docs/ROADMAP.md): no `riscv-arch-test` run, no jumps or
-privileged instructions in the random stimulus, no requirements-derived
-coverage plan, no physical design.
+What is *not* claimed is in [docs/ROADMAP.md](docs/ROADMAP.md): no
+`riscv-arch-test` run, no privileged instructions in the random stimulus, no
+physical design. [docs/VMATRIX.md](docs/VMATRIX.md) maps every design feature
+to its stimulus, checker, assertions and coverage, including the gaps.
 
 ## Layout
 
