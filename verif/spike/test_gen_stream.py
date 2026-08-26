@@ -51,13 +51,24 @@ def b_imm(w):
     return imm - 0x2000 if imm & 0x1000 else imm
 
 
-WRITING_OPCODES = {g.OP_RTYPE, g.OP_ITYPE, g.OP_LOAD}
+def j_imm(w):
+    imm = (fld(w, 31, 31) << 20) | (fld(w, 12, 19) << 12) | \
+          (fld(w, 20, 20) << 11) | (fld(w, 21, 30) << 1)
+    return imm - 0x200000 if imm & 0x100000 else imm
+
+
+WRITING_OPCODES = {g.OP_RTYPE, g.OP_ITYPE, g.OP_LOAD,
+                   g.OP_LUI, g.OP_AUIPC, g.OP_JAL, g.OP_JALR}
 
 
 def body_of(words, random_instr_count):
-    """The randomly generated slice: after the prologue, before pad+sentinel."""
+    """The randomly generated slice: after the prologue, before pad+sentinel.
+
+    A JALR pair emits two words, so the body can be longer than
+    random_instr_count -- slice by position, not by count.
+    """
     prologue = len(g.USABLE_GPRS) + 1
-    return words[prologue:prologue + random_instr_count]
+    return words[prologue:len(words) - g.PAD_WORDS - 1]
 
 
 def streams(n_seeds=50, random_instr_count=40):
@@ -106,9 +117,9 @@ class TestMemoryWindow(unittest.TestCase):
                                  f"seed {seed}: misaligned funct3={f3:03b} off={off}")
 
 
-class TestBranches(unittest.TestCase):
-    def test_branches_only_jump_forward_within_the_padding(self):
-        # A backward branch can loop forever; a forward branch past the pad
+class TestControlTransfers(unittest.TestCase):
+    def test_branches_and_jal_only_jump_forward_within_the_padding(self):
+        # A backward transfer can loop forever; a forward one past the pad
         # lands in unwritten memory. Both desynchronise the two models.
         for seed, words, n in streams():
             for w in body_of(words, n):
@@ -116,6 +127,37 @@ class TestBranches(unittest.TestCase):
                     self.assertGreater(b_imm(w), 0, f"seed {seed}")
                     self.assertLessEqual(b_imm(w), g.MEMAX_BRANCH_OFFSET,
                                          f"seed {seed}")
+                elif opcode(w) == g.OP_JAL:
+                    self.assertGreater(j_imm(w), 0, f"seed {seed}")
+                    self.assertLessEqual(j_imm(w), g.MEMAX_BRANCH_OFFSET,
+                                         f"seed {seed}")
+
+    def test_jalr_is_paired_and_never_a_jump_target(self):
+        # Each JALR must directly follow the AUIPC that pins its base, and no
+        # other transfer may land on the JALR word -- entered alone it would
+        # jump through a stale register.
+        for seed, words, n in streams():
+            body = body_of(words, n)
+            base = len(g.USABLE_GPRS) + 1
+            targets = set()
+            for i, w in enumerate(body):
+                if opcode(w) in (g.OP_BRANCH, g.OP_JAL):
+                    off = b_imm(w) if opcode(w) == g.OP_BRANCH else j_imm(w)
+                    targets.add(base + i + off // 4)
+                elif opcode(w) == g.OP_JALR:
+                    prev = body[i - 1] if i > 0 else 0
+                    self.assertEqual(opcode(prev), g.OP_AUIPC,
+                                     f"seed {seed}: unpaired JALR")
+                    self.assertEqual(rd(prev), rs1(w),
+                                     f"seed {seed}: JALR base != AUIPC rd")
+                    self.assertGreater(i_imm(w), 0, f"seed {seed}")
+                    self.assertLessEqual(i_imm(w), g.MEMAX_BRANCH_OFFSET,
+                                         f"seed {seed}")
+                    targets.add(base + (i - 1) + i_imm(w) // 4)
+            for i, w in enumerate(body):
+                if opcode(w) == g.OP_JALR:
+                    self.assertNotIn(base + i, targets,
+                                     f"seed {seed}: a transfer targets a JALR")
 
 
 class TestSentinel(unittest.TestCase):
@@ -144,7 +186,7 @@ class TestHazardBias(unittest.TestCase):
                 op = opcode(w)
                 srcs = []
                 if op in (g.OP_RTYPE, g.OP_ITYPE, g.OP_LOAD, g.OP_STORE,
-                          g.OP_BRANCH):
+                          g.OP_BRANCH, g.OP_JALR):
                     srcs.append(rs1(w))
                 if op in (g.OP_RTYPE, g.OP_STORE, g.OP_BRANCH):
                     srcs.append(rs2(w))
