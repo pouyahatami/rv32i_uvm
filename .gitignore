@@ -64,3 +64,8 @@ docs/GAPS.md
 docs/JOURNAL.md
 docs/WAVEFORMS.md
 verif/uvm/EDA_PLAYGROUND_SETUP.md
+
+# Unreferenced/stale diagrams kept locally: the detailed UVM diagram still
+# shows the pre-split mem_backdoor_if.
+images/differential_testing_concept.png
+images/uvm_env_detailed_stale.png
