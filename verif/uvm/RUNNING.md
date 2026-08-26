@@ -9,9 +9,9 @@ for why the reference model is Spike.
 
 ## Status
 
-Validated with Questa Altera Starter FPGA Edition 2025.2 on Windows: the
-checked-in stream completes 72 of 72 reference retirements with zero UVM
-warnings, errors, or fatals.
+Validated with Questa Altera Starter FPGA Edition 25.3.1 on Windows (and
+previously 2025.2): the checked-in seed-1 stream completes 59 of 59 reference
+retirements with zero UVM warnings, errors, or fatals.
 
 ## Option A: Questa
 
@@ -37,7 +37,8 @@ at simulation time. That is a side effect of the reference model being Spike:
 the program has to be generated wherever the reference trace is generated, and
 Spike cannot be called from inside the simulator.
 
-This flow is confirmed on Questa Altera Starter FPGA Edition 2025.2.
+This flow is confirmed on Questa Altera Starter FPGA Edition 2025.2 and
+25.3.1.
 
 **This is a constraint to preserve deliberately.** The two most natural next
 steps below, constrained-random generation and functional coverage, both
@@ -102,11 +103,11 @@ to run, and must be changed as a pair.
 ## What success looks like
 
 ```
-UVM_INFO ... [SCOREBOARD] loaded 72 reference retirements from stream_trace.txt
+UVM_INFO ... [SCOREBOARD] loaded 59 reference retirements from stream_trace.txt
 UVM_INFO ... [DRIVER] zeroed data memory while reset was asserted
-UVM_INFO ... [DRIVER] backdoor-loaded 83 instruction words
-UVM_INFO ... [SCOREBOARD] sentinel retired -- 72 instructions checked, 0 mismatches
-UVM_INFO ... [TEST] DONE -- 72 of 72 retirements checked, 0 mismatches
+UVM_INFO ... [DRIVER] backdoor-loaded 85 instruction words
+UVM_INFO ... [SCOREBOARD] sentinel retired -- 59 instructions checked, 0 mismatches
+UVM_INFO ... [TEST] DONE -- 59 of 59 retirements checked, 0 mismatches
 UVM_INFO ... [TEST] *** UVM TEST PASSED ***
 RV32I_UVM_VERDICT: PASS
 ```
@@ -131,10 +132,13 @@ retirement index against the trace before suspecting the core.
 
 ## Deliberately not done
 
-- **JAL/JALR/LUI/AUIPC/SYSTEM** in the generated stream. The current stream is
-  R-type, I-type ALU, LOAD, STORE and forward-only BRANCH only, so this
-  environment does not exercise the CSR/trap/interrupt machinery at all;
-  `tb_pipe_csr` is the directed test that covers it.
+- **SYSTEM (ECALL, CSR ops, MRET)** in the generated stream. Everything else
+  in RV32I is generated -- R-type, the full I-type ALU set, LOAD, STORE, and
+  forward-only BRANCH/JAL/JALR plus LUI and AUIPC -- but excluding SYSTEM
+  means this environment does not exercise the CSR/trap/interrupt machinery at
+  all; `tb_pipe_csr` is the directed test that covers it. Adding it needs trap
+  handlers inside generated programs, which is a different kind of generator
+  (see [GAPS.md](../../docs/GAPS.md) on the riscv-dv threshold).
 - **Constrained-random generation** in the sequence instead of Python
   generation. Costs Starter Edition support, and would need the program and the
   Spike reference to be generated together some other way.

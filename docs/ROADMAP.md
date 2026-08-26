@@ -44,11 +44,21 @@ generator to emit a safe scratch base -- `ADDI rt, x1, off` followed by a load
 off `rt`. That change must preserve the invariant keeping generated stores off
 the program image (see V4 in [BUGS.md](BUGS.md)).
 
-**Stimulate the jump and upper-immediate opcodes.** `gen_stream.py` emits no
-JAL, JALR, LUI or AUIPC, so the `opcode_out_of_scope` group sits at zero by
-construction. Two known bugs live in exactly that gap -- D3's spurious-stall
-case and the JAL/JALR half of D6, which was never covered by any test in any
-version of the file. This is now the largest verification hole in the project.
+**Stimulate the jump and upper-immediate opcodes.** *Done.* `gen_stream.py`
+now emits JAL, JALR, LUI and AUIPC, and the three immediate shifts. Only
+SYSTEM remains out of scope. Two known bugs lived in exactly that gap -- D3's
+spurious-stall case and the JAL/JALR half of D6, which was never covered by
+any test in any version of the file; both paths are now exercised by the
+random stream and check clean against Spike.
+
+Jumps are forward-only and bounded, the same invariant branches already had.
+JALR is emitted as an AUIPC+JALR pair so its base register is produced two
+instructions earlier by construction rather than being whatever a random
+register happens to hold -- which also makes every JALR a distance-1 RAW
+hazard on its own target. The generator refuses to emit a pair whose JALR
+word is already some earlier transfer's target, since a JALR entered without
+its AUIPC would jump through a stale register;
+`test_gen_stream.py` re-derives that property independently across 50 seeds.
 
 **Corner-case ALU operands.** D1 was a sign error at the signed-overflow
 boundary. The generator uses uniform-random operands, which essentially never
@@ -57,9 +67,9 @@ the corner instead of hoping for it.
 
 **Write the missing converse assertions.** *Done for the redirect sources:*
 `hazard_sva.sv` now asserts cause->effect for JumpD, mret, EnterDebug and
-ExitDebug (the D5 property), each with a cover property -- and states plainly
-that they are vacuous under the current generated stimulus, which contains no
-jump, SYSTEM or debug traffic. They go live with the stimulus items above.
+ExitDebug (the D5 property), each with a cover property. `a_jump_flushes` is
+now non-vacuous under the generated stream; the mret and debug properties
+still are, since that stimulus has no SYSTEM or debug traffic.
 Related gaps remain: no properties yet for
 retirement validity, wrong-path retirement, PC alignment/progression, or
 "no memory write from a flushed instruction". And note the honest scope: these

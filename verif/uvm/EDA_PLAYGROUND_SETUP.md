@@ -158,9 +158,9 @@ The UVM log should end with something like:
 
 ```
 UVM_INFO ... [DRIVER] zeroed data memory while reset was asserted
-UVM_INFO ... [DRIVER] backdoor-loaded 83 instruction words
-UVM_INFO ... [SCOREBOARD] sentinel retired -- 72 instructions checked, 0 mismatches
-UVM_INFO ... [TEST] DONE -- 72 of 72 retirements checked, 0 mismatches
+UVM_INFO ... [DRIVER] backdoor-loaded 85 instruction words
+UVM_INFO ... [SCOREBOARD] sentinel retired -- 59 instructions checked, 0 mismatches
+UVM_INFO ... [TEST] DONE -- 59 of 59 retirements checked, 0 mismatches
 UVM_INFO ... [TEST] *** UVM TEST PASSED ***
 ```
 

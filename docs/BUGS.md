@@ -148,21 +148,18 @@ assign lwStallD = IsLoadE && (RdE != 0) &&
 `funct3[2]` distinguishes `csrrwi`-style instructions that encode an immediate in
 the `rs1` field.
 
-**The check now** Structurally guarded, not yet randomly stimulated:
+**The check now** Structurally guarded and randomly stimulated:
 
 - `a_stall_has_cause` and `a_lwstall_effect` (`verif/sva/hazard_sva.sv`) hold the
   interlock to its contract every cycle — a stall must have a cause, and must
   stall fetch and decode *and* bubble execute rather than doing some of those.
-- **The specific case is not covered by the random environment.**
-  `gen_stream.py` emits no JAL, LUI or AUIPC, so the exact instructions that
-  trigger this bug never appear in a generated stream. The coverage report says
-  so out loud: `opcode.jal`, `opcode.lui` and `opcode.auipc` are declared bins
-  that print at zero in a separate `opcode_out_of_scope` group.
-- The directed testbench `tb_pipe_hazard` does exercise it, against
+- `gen_stream.py` now emits JAL, JALR, LUI and AUIPC, so the instructions whose
+  immediate bits alias the rs1/rs2 fields — the exact trigger for this bug —
+  appear in every generated stream and are checked against Spike at every
+  retirement. `opcode.jal/jalr/lui/auipc` are ordinary in-scope coverage bins
+  rather than the permanently-zero group they used to sit in.
+- The directed testbench `tb_pipe_hazard` also exercises it, against
   Spike-generated golden values.
-
-Extending the generator to emit U-type and J-type instructions is the fix, and is
-in [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -328,10 +325,12 @@ by any test.** It was fixed by reasoning about the mux, not by a failure.
 
 - The CSR path is checked by `tb_pipe_csr` against Spike golden values, and the
   hang is a hard failure rather than a quiet mismatch.
-- The JAL/JALR path is **still not covered by any automated check**, for the same
-  reason as D3: `gen_stream.py` emits no jumps, and the coverage report prints
-  `opcode.jal` and `opcode.jalr` at zero. This is the largest known verification
-  hole in the project and it is stated as such in [ROADMAP.md](ROADMAP.md).
+- The JAL/JALR path **is now covered**. `gen_stream.py` emits both, so the
+  link-register writeback that this mux feeds is compared against Spike at
+  every retirement, and forwarding from a jump's link value is reachable
+  stimulus rather than a reasoned-about case. This closes what earlier
+  versions of this file called the largest known verification hole in the
+  project.
 - `unique case` makes an unhandled `ResultSrcM` encoding a simulation error
   rather than a latch.
 
