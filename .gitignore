@@ -55,3 +55,12 @@ desktop.ini
 MyRISCVBallKnowledge.md
 docs/COURSE.html
 docs/WAVEFORMS.md
+
+# Working notes kept locally, not published: internal roadmap, known-gaps
+# list, build journal, personal tooling notes, and the EDA Playground guide
+# that RUNNING.md supersedes.
+docs/ROADMAP.md
+docs/GAPS.md
+docs/JOURNAL.md
+docs/WAVEFORMS.md
+verif/uvm/EDA_PLAYGROUND_SETUP.md

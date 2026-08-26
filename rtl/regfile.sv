@@ -31,7 +31,7 @@
 // preferred here -- same behaviour, but no second clock edge, which keeps this
 // synthesisable as ordinary single-edge logic.)
 //
-// Omitting it is a real bug, not a theoretical one -- docs/JOURNAL.md,
+// Omitting it is a real bug, not a theoretical one -- docs/BUGS.md,
 // "Distance-3 RAW hazards read stale registers".
 // =============================================================================
 

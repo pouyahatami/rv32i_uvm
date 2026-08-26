@@ -12,8 +12,7 @@ The last part of each entry is the one that matters. A bug you fixed is history;
 a bug you fixed *and can no longer reintroduce silently* is a result. Where no
 automated check guards a fix, this file says so rather than implying otherwise.
 
-Longer narrative for most of these is in [JOURNAL.md](JOURNAL.md); the design
-they refer to is in [DESIGN_GUIDE.md](DESIGN_GUIDE.md).
+The design these refer to is in [DESIGN_GUIDE.md](DESIGN_GUIDE.md).
 
 ---
 
@@ -35,11 +34,11 @@ they refer to is in [DESIGN_GUIDE.md](DESIGN_GUIDE.md).
 All three "found by reading" bugs were caught during construction, while the
 code was still warm, and all three were wiring bugs. **No bug was ever found by
 the author re-reading code they had already reviewed.** Fifteen of eighteen
-were found by a tool or by fresh eyes, and the two most serious RTL bugs — D4
-and D6 — had each survived several deliberate review passes over exactly the
+were found by a tool or by fresh eyes, and the two most serious RTL bugs, D4
+and D6, had each survived several deliberate review passes over exactly the
 file involved. The last three entries extend the pattern one level up: they are
 defects in this project's *signoff mechanics*, found by an external reviewer
-who did what the author had not — deliberately broke an assertion and watched
+who did what the author had not, deliberately broke an assertion and watched
 whether the regression noticed.
 
 That is the argument for the whole verification stack in this repo, and it is
@@ -53,18 +52,18 @@ Bugs in the synthesizable RTL. These are the ones that would have shipped.
 
 ---
 
-## D1 — SLT read the wrong sign at the overflow boundary
+## D1: SLT read the wrong sign at the overflow boundary
 
 **Where** `rtl/alu.sv:33`
 
-**Symptom** `SLT` returns the wrong result when the subtraction overflows —
+**Symptom** `SLT` returns the wrong result when the subtraction overflows , 
 `SLT x1, INT_MIN, 1` says "not less than". Correct everywhere else.
 
 **Root cause** `SLT` is implemented by reusing the subtract hardware and
 correcting the sign with the overflow bit (`sum[31] ^ v`). `v` is only
 meaningful for add/sub-shaped operations, so it is gated by `isAddSub`. When the
 ALU control encoding was widened from 3 bits to 4, that gate was rewritten to
-list the add and sub encodings — and not the SLT one. `v` was then forced to 0
+list the add and sub encodings, and not the SLT one. `v` was then forced to 0
 for `SLT`, and the sign correction silently stopped happening.
 
 ```systemverilog
@@ -83,12 +82,11 @@ writeback is compared against Spike, and `gen_stream.py:139` randomises R-type
 compared. But the operands are uniform random, so the failing corner is not
 being aimed at. **This bug's specific corner is not directly targeted by any
 current check.** Closing it properly means constraining operands toward
-`INT_MIN`/`INT_MAX`/`0`/`-1`, which is a generator change, listed in
-[ROADMAP.md](ROADMAP.md).
+`INT_MIN`/`INT_MAX`/`0`/`-1`, which is a generator change that has not been made.
 
 ---
 
-## D2 — The forwarding muxes had their inputs in the wrong order
+## D2: The forwarding muxes had their inputs in the wrong order
 
 **Where** `rtl/datapath.sv:198`
 
@@ -96,7 +94,7 @@ current check.** Closing it properly means constraining operands toward
 
 **Root cause** `mux3` selects `d0` on `2'b00`, `d1` on `01`, `d2` on `10`. The
 hazard unit's encoding is `FWD_WB = 01`, `FWD_MEM = 10`. The muxes were wired
-`(RD1E, ALUResultM, ResultW)` — the MEM and WB sources swapped. Right number of
+`(RD1E, ALUResultM, ResultW)`, the MEM and WB sources swapped. Right number of
 arguments, right names, plausible-looking line, wrong order.
 
 ```systemverilog
@@ -106,12 +104,12 @@ mux3 #(32) forwardamux (.d0(RD1E), .d1(ResultW), .d2(FwdResultM), .s(SelectAE), 
 
 **The check now** Two halves, checked by two different mechanisms:
 
-- The *select* side — that `SelectAE`/`SelectBE` are only ever asserted when a
-  real producer is in flight, and that MEM wins over WB when both match — is
+- The *select* side (that `SelectAE`/`SelectBE` are only ever asserted when
+  a real producer is in flight, and that MEM wins over WB when both match) is
   checked every cycle by bound assertions: `a_fwd_mem_legal`, `a_fwd_wb_legal`,
   `a_fwd_mem_priority`, `a_no_spurious_fwd`, `a_no_fwd_x0` in
   `verif/sva/hazard_sva.sv`.
-- The *data* side — that the mux port order matches that encoding — is not
+- The *data* side (that the mux port order matches that encoding) is not
   visible to those assertions, because they are bound into `hazard_unit.sv` and
   this bug is in `datapath.sv`. It is caught by the scoreboard: a swapped mux
   delivers an architecturally wrong writeback, which the lockstep comparison
@@ -123,18 +121,18 @@ hazards, so the coverage model reports `hazard.alu_raw_d1` and
 
 ---
 
-## D3 — Immediate bits were mistaken for register numbers
+## D3: Immediate bits were mistaken for register numbers
 
 **Where** `rtl/hazard_unit.sv:181`, gated from `rtl/controller.sv:78`
 
-**Symptom** A spurious load-use stall, and — worse — a silently dropped jump.
+**Symptom** A spurious load-use stall, and, worse, a silently dropped jump.
 
 **Root cause** The load-use interlock compares the EX-stage load's destination
 against `InstrD[19:15]` and `InstrD[24:20]`. Those are `rs1` and `rs2` for most
 instructions, but JAL, LUI and AUIPC reuse the same bit positions as *immediate*
 bits. An immediate whose bits happened to equal a preceding load's destination
 register number would trigger the interlock. The stall itself would only waste a
-cycle — but `StallF` freezes `PCF`, and if the instruction being frozen was a JAL
+cycle, but `StallF` freezes `PCF`, and if the instruction being frozen was a JAL
 that needed to redirect the PC that cycle, the jump is lost with no other
 symptom.
 
@@ -151,10 +149,10 @@ the `rs1` field.
 **The check now** Structurally guarded and randomly stimulated:
 
 - `a_stall_has_cause` and `a_lwstall_effect` (`verif/sva/hazard_sva.sv`) hold the
-  interlock to its contract every cycle — a stall must have a cause, and must
+  interlock to its contract every cycle, a stall must have a cause, and must
   stall fetch and decode *and* bubble execute rather than doing some of those.
 - `gen_stream.py` now emits JAL, JALR, LUI and AUIPC, so the instructions whose
-  immediate bits alias the rs1/rs2 fields — the exact trigger for this bug —
+  immediate bits alias the rs1/rs2 fields, the exact trigger for this bug , 
   appear in every generated stream and are checked against Spike at every
   retirement. `opcode.jal/jalr/lui/auipc` are ordinary in-scope coverage bins
   rather than the permanently-zero group they used to sit in.
@@ -163,7 +161,7 @@ the `rs1` field.
 
 ---
 
-## D4 — Distance-3 RAW dependencies read a stale register
+## D4: Distance-3 RAW dependencies read a stale register
 
 **Where** `rtl/regfile.sv:53`
 
@@ -181,7 +179,7 @@ LW   x12, 0(x10)      <- consumer, three instructions later
 ```
 
 `0x55` was a value the *previous* test case had left at address 0, so the load
-had gone to address 0 rather than 4 — meaning it read `x10` as zero.
+had gone to address 0 rather than 4, meaning it read `x10` as zero.
 
 **Root cause** A gap between two mechanisms that each individually looked
 complete. Forwarding covers a producer in MEM or WB against a consumer in EX:
@@ -192,7 +190,7 @@ value. By the time the consumer reached EX, the producer had retired and no
 forwarding path saw it either.
 
 `regfile.sv` had been inherited unchanged from the single-cycle design, where the
-question cannot arise — there is no ID stage to be early. Its header comment
+question cannot arise, there is no ID stage to be early. Its header comment
 still read "UNCHANGED by the RV32I extension", which in hindsight was the
 warning.
 
@@ -217,12 +215,12 @@ assumption buried in a file nobody had reason to re-read.
   could not have found this, and the report names the hole by name rather than
   leaving it inside a percentage.
 - `c_fwd_both_stages` in `verif/sva/hazard_sva.sv` covers the adjacent
-  condition — MEM and WB both writing the register an operand needs — proving the
+  condition, MEM and WB both writing the register an operand needs, proving the
   priority assertions are not passing vacuously.
 
 ---
 
-## D5 — `dret` never flushed the instructions behind it
+## D5: `dret` never flushed the instructions behind it
 
 **Where** `rtl/hazard_unit.sv:194`
 
@@ -234,7 +232,7 @@ core halted correctly, resumed correctly, then wedged.
 already fetched sequentially behind the `dret` were never squashed, and executed
 for real after the resume.
 
-This is structurally identical to `mret_enE`, which *was* handled — `dret` is the
+This is structurally identical to `mret_enE`, which *was* handled, `dret` is the
 debug-mode spelling of the same "redirect the PC from EX" event. The debug work
 had reasoned carefully about which stages to squash on debug *entry*, and never
 asked the same question about *exit*.
@@ -251,10 +249,10 @@ assign FlushE = PCSrcE | lwStallD | EnterDebug | ExitDebug | trap_en | mret_enE;
 - The bound assertions `a_flushd_has_cause` and `a_flushe_has_cause` do *not*
   catch it, and it is worth saying why rather than listing them and moving on.
   They are written as `FlushD |-> (... || ExitDebug || ...)`: every flush must
-  have a cause. This bug is the converse — a cause with no flush. The implication
+  have a cause. This bug is the converse, a cause with no flush. The implication
   points the wrong way. `a_exitdebug_flushes: ExitDebug |-> FlushD && FlushE`
   now exists in `hazard_sva.sv`, alongside cause→effect properties for every
-  other redirect source — with the honest caveat, stated in the file, that the
+  other redirect source, with the honest caveat, stated in the file, that the
   generated stream contains no debug traffic yet, so under the UVM regression
   it passes vacuously and its cover property reports so. It becomes a live
   check the moment any bound stimulus exercises debug exit.
@@ -275,14 +273,14 @@ incrementing. The testbench passed by luck, off the back of a trap handler firin
 for a bug that had nothing to do with traps. Icarus is 4-state: those fetches
 read X, the PC went X, and the core visibly wedged.
 
-Neither tool is right — real hardware fetches whatever is physically there, which
+Neither tool is right, real hardware fetches whatever is physically there, which
 is neither 0 nor X. The point is that a single simulator's initialisation policy
 is a silent assumption baked into every result it gives you, and a second tool
 that leans differently is the cheapest way to find where you are leaning.
 
 ---
 
-## D6 — The MEM-stage forward delivered the ALU result for non-ALU instructions
+## D6: The MEM-stage forward delivered the ALU result for non-ALU instructions
 
 **Where** `rtl/datapath.sv:401`
 
@@ -297,13 +295,13 @@ needs `CsrRdataM`) and for JAL/JALR (which need `PCPlus4M`).
 It had been masked by an accident of bit numbering. `IsLoadE` was computed as
 `ResultSrc[0]`, which is true for both `RESULT_MEM` and `RESULT_CSR`. So CSR
 reads were being treated as loads and *stalled* rather than forwarded, and the
-mux was simply never asked for the CSR value. Fixing the aliasing —
+mux was simply never asked for the CSR value. Fixing the aliasing , 
 
 ```systemverilog
 assign IsLoadE = (ctrlE.ResultSrc == RESULT_MEM);
 ```
 
-— exposed the real bug immediately: the trap handler's `mepc += 4` wrote back a
+,  exposed the real bug immediately: the trap handler's `mepc += 4` wrote back a
 stale value, so `mret` returned to the `ecall` that had trapped, and re-trapped,
 forever.
 
@@ -340,13 +338,13 @@ by any test.** It was fixed by reasoning about the mux, not by a failure.
 
 Bugs in the testbenches, the stimulus generator, the coverage model and the
 assertions. These found no design defect, and they are here because each one
-either hid a real bug or accused an innocent one — and because a project whose
+either hid a real bug or accused an innocent one, and because a project whose
 bug list contains only design bugs is a project that has not been watching its
 checkers.
 
 ---
 
-## V1, V2 — Forward references that only one simulator tolerated
+## V1, V2, Forward references that only one simulator tolerated
 
 **Where** `rtl/datapath.sv` (`ResultW`), `rtl/riscv_pipe.sv` (`enter_debug`)
 
@@ -359,8 +357,8 @@ tool ever read the code.
 SystemVerilog elaborator on the machine.
 
 **The check now** Everything elaborates clean under `pyslang -Weverything`. There
-is no lint step wired into `run_sim.sh` yet — adding `verilator --lint-only
--Wall` is the open item in [ROADMAP.md](ROADMAP.md), and it is the mechanical
+is no lint step wired into `run_sim.sh` yet, adding `verilator --lint-only
+-Wall` is not yet part of the flow, and it is the mechanical
 guard this class of bug actually wants.
 
 **Worth recording** That clean elaboration meant much less than it felt like it
@@ -369,7 +367,7 @@ checking bought structure, and nothing whatsoever about behaviour.
 
 ---
 
-## V3 — A hierarchical path that rotted when a module was inserted
+## V3: A hierarchical path that rotted when a module was inserted
 
 **Where** `rtl/tb_pipe.sv`, `tb_pipe_hazard`'s backdoor memory check
 
@@ -388,7 +386,7 @@ place, and checked by the compiler.
 
 ---
 
-## V4 — The generated program overwrote its own code
+## V4: The generated program overwrote its own code
 
 **Where** `verif/spike/gen_stream.py`
 
@@ -396,8 +394,8 @@ place, and checked by the compiler.
 
 **Root cause** A state mismatch between reference and DUT, of a kind larger than
 it first looks. The generated stores used `x1` as a base seeded to 0, with
-offsets up to 255. **The DUT is Harvard** — separate `imem` and `dmem`, both
-based at 0 — so those stores cannot touch the program. **Spike is von Neumann**,
+offsets up to 255. **The DUT is Harvard**, separate `imem` and `dmem`, both
+based at 0, so those stores cannot touch the program. **Spike is von Neumann**,
 one address space. On Spike the program overwrote its own instructions, executed
 the corrupted words, trapped to an uninitialised `mtvec = 0`, jumped to the top
 and looped forever.
@@ -417,20 +415,20 @@ scoreboard would have reported mismatches pointing at innocent RTL.
 
 ---
 
-## V5 — The golden trace started five instructions before the program did
+## V5: The golden trace started five instructions before the program did
 
 **Where** `verif/spike/gen_stream.py`
 
 **Symptom** None. The script exited 0 and produced a trace that looked fine.
 
-**Root cause** The trace's first five rows were at PC `0x40001000` — Spike's boot
+**Root cause** The trace's first five rows were at PC `0x40001000`, Spike's boot
 ROM, which runs `auipc/addi/csrrs mhartid/lw/jalr` before jumping to the ELF
 entry. The DUT has no boot ROM and resets straight to PC 0, so every comparison
 would have been five instructions out of step.
 
 Worse than the offset: that boot sequence leaves `x11` holding a device-tree
 pointer. Any generated instruction reading `x11` before writing it would diverge
-for reasons entirely unconnected to the DUT — and would look exactly like a
+for reasons entirely unconnected to the DUT, and would look exactly like a
 forwarding bug, which is the most expensive kind of false positive to hand a
 verification engineer.
 
@@ -446,7 +444,7 @@ the actual output instead of trusting the exit code.
 
 ---
 
-## V6 — Loads from never-written memory read 0 on one simulator and X on another
+## V6: Loads from never-written memory read 0 on one simulator and X on another
 
 **Where** `verif/spike/gen_stream.py`
 
@@ -471,7 +469,7 @@ from it, and it was made for a measured reason: 64 setup stores dominated every
 40-instruction random stream, so most of each program was prologue rather than
 stimulus, and the store-heavy opening skewed the hazard mix. Removing it took
 the 10-seed coverage union from 56/59 to 59/59 bins of the hazard-only model
-in use at the time (the table in [ROADMAP.md](ROADMAP.md)).
+in use at the time.
 
 Two things were knowingly given up. First, the clear is a trusted path in the
 sense that no retirement checks it -- but not an *unchecked* one: if any byte
@@ -484,7 +482,7 @@ other X source at the retirement boundary.
 
 ---
 
-## V7 — Both testbenches sampled one delta-cycle too early
+## V7: Both testbenches sampled one delta-cycle too early
 
 **Where** `rtl/tb_pipe.sv:129`, `rtl/tb_pipe.sv:354`
 
@@ -506,23 +504,23 @@ testbench went green.
 
 ---
 
-## V8 — The register file has no reset, and the simulators disagree about that too
+## V8: The register file has no reset, and the simulators disagree about that too
 
 **Where** `rtl/tb_pipe.sv`
 
-**Root cause** `regfile.sv` is a RAM with no reset. That is correct hardware —
+**Root cause** `regfile.sv` is a RAM with no reset. That is correct hardware , 
 RISC-V does not define reset values for `x1`–`x31`. Under Icarus every
 never-written register reads X; under Verilator it reads 0, and the golden values
 expect 0.
 
 **Fix, and the deliberate choice in it** Fixed in the *testbench*, by forcing a
 known all-zero architectural start state. Adding a reset to `regfile.sv` would
-have been inventing hardware to satisfy a simulator — 31 flops' worth of reset
+have been inventing hardware to satisfy a simulator, 31 flops' worth of reset
 logic that no specification asks for, added because a tool printed X.
 
 ---
 
-## V9 — The coverage model's own bin names were silently corrupted
+## V9: The coverage model's own bin names were silently corrupted
 
 **Where** `verif/uvm/src/rv32i_coverage.svh`
 
@@ -553,7 +551,7 @@ is worth acting on. This one was being read as evidence about the generator.
 
 ---
 
-## V10 — An assertion that was itself wrong, and fired 11 times
+## V10: An assertion that was itself wrong, and fired 11 times
 
 **Where** `verif/sva/hazard_sva.sv`
 
@@ -564,15 +562,15 @@ the same stage were mutually exclusive:
 a_no_stall_flush_conflict: assert property (!(StallD && FlushD));
 ```
 
-They read as contradictory — one says "hold what you have", the other "replace it
-with a bubble" — but they legitimately coincide. A trap or a resolved taken
+They read as contradictory, one says "hold what you have", the other "replace it
+with a bubble", but they legitimately coincide. A trap or a resolved taken
 branch redirects the PC in the same cycle a load-use interlock is holding decode.
 Nothing forbids that, and forbidding it constrains the *stimulus* rather than
 describing the *design*.
 
 **Fix** The design's actual guarantee is a **priority**: `datapath.sv`'s IF/ID
 register tests `FlushD` before `StallD`, so a redirect always beats an interlock
-— which is the only correct choice, since the stalled instruction is on the wrong
+,  which is the only correct choice, since the stalled instruction is on the wrong
 path and must not be preserved.
 
 ```systemverilog
@@ -585,7 +583,7 @@ case that never occurs, and would pass forever while proving nothing.
 
 ---
 
-## V11 — The "illegal instruction" was not the instruction it claimed to be
+## V11: The "illegal instruction" was not the instruction it claimed to be
 
 **Where** `rtl/testgen/asm.py`
 
@@ -593,8 +591,8 @@ case that never occurs, and would pass forever while proving nothing.
 as an unallocated opcode. It is not. `0x7F` in the low seven bits is the RISC-V
 *instruction-length encoding* for instructions of 80 bits or longer.
 
-The test still does something valid — this core implements no variable-length
-instructions, so the word does raise an illegal-instruction trap — but it is not
+The test still does something valid, this core implements no variable-length
+instructions, so the word does raise an illegal-instruction trap, but it is not
 testing the thing it says it is testing.
 
 **Found by** disassembling all three test programs with GNU binutils, as an
@@ -607,7 +605,7 @@ See below.
 
 ---
 
-## V12 — Every regression flow passed with all assertions failing
+## V12: Every regression flow passed with all assertions failing
 
 **Where** `verif/uvm/run_uvm.sh`, `verif/uvm/run_seeds.sh`,
 `verif/uvm/run_questa.do`
@@ -617,20 +615,20 @@ the phrase "17 assertions" everywhere it had been written: an assertion whose
 failure cannot fail the regression is a source-code count, not a check.
 
 **Symptom** Demonstrated by mutation: with `assert property (1'b0)` seeded into
-`hazard_sva.sv`, Questa reported **153 assertion errors** — and the run still
+`hazard_sva.sv`, Questa reported **153 assertion errors**, and the run still
 printed `*** UVM TEST PASSED ***`, `RV32I_UVM_VERDICT: PASS`, `UVM_ERROR: 0`,
 and exited 0 from every flow.
 
 **Root cause** A bound SVA failure is a *simulator* error. It never touches the
-UVM report server, so `UVM_ERROR` stays 0 and the verdict — which is computed
-from the report server's own count — stays PASS. Every pass criterion in every
+UVM report server, so `UVM_ERROR` stays 0 and the verdict, which is computed
+from the report server's own count, stays PASS. Every pass criterion in every
 flow consulted only the UVM side. `run_seeds.sh` had even been hardened once
 before (see its comment about 13 `UVM_ERROR`s hiding behind "UVM TEST PASSED")
 and the hardening repeated the same category mistake one level down.
 `run_questa.do` was worse still: it never compiled the SVA files at all.
 
 **Found by** an external DV review that inserted a deliberately failing
-assertion and watched the regression pass anyway — the mutation test the author
+assertion and watched the regression pass anyway, the mutation test the author
 should have run and never had.
 
 **Fix** All three flows now gate on the conjunction of the UVM verdict *and*
@@ -642,17 +640,17 @@ the fixed flows: all three exit nonzero, seeds report
 **The check now** The gates themselves, plus the mutation procedure: seed
 `a_mutation_canary: assert property (@(posedge clk) 1'b0);` into
 `hazard_sva.sv` and every flow must go red. A regression whose failure path has
-never been demonstrated is trusted, not tested — this one is now tested.
+never been demonstrated is trusted, not tested, this one is now tested.
 
 ---
 
-## V13 — The retirement transaction destroyed X before the scoreboard could see it
+## V13: The retirement transaction destroyed X before the scoreboard could see it
 
 **Where** `verif/uvm/src/rv32i_retire_txn.svh`, `verif/uvm/src/rv32i_monitor.svh`
 
 **Root cause** Every observed field in the retirement transaction was declared
 two-state `bit`. The interface is four-state `logic`, so the assignment in the
-monitor silently converted any X or Z to 0 — *before* the scoreboard's `!==`
+monitor silently converted any X or Z to 0, *before* the scoreboard's `!==`
 comparisons ran. `!==` looks X-safe, but it cannot see an X that was already
 erased at the class boundary: an unknown writeback compared equal to a
 legitimate zero and passed.
@@ -663,21 +661,21 @@ legitimate zero and passed.
   and fails it.
 - The monitor raises an explicit `RETIRE_X` `uvm_error` on any unknown, with
   the qualified fields (`rd`/`wdata`, `store_*`) checked only under their valid
-  bits — an X on `wdata` when `regwrite` is 0 is don't-care, not a defect.
+  bits, an X on `wdata` when `regwrite` is 0 is don't-care, not a defect.
 
 **The fix caught something within one run of existing.** The first execution
 flagged retirements at PCs past the program's end: after the sentinel, the core
 fetches unwritten memory and "retires" X garbage until the test winds down.
 The scoreboard and coverage collector already ignored post-sentinel
 retirements, each behind its own guard; the monitor now carries the same guard
-for the same stated reason. That X-noise had always been there — this is the
+for the same stated reason. That X-noise had always been there, this is the
 first component that could see it.
 
 **Found by** the same external review, by reading the transaction class.
 
 ---
 
-## V14 — The hazard bias pointed at phantom producers
+## V14: The hazard bias pointed at phantom producers
 
 **Where** `verif/spike/gen_stream.py`
 
@@ -691,7 +689,7 @@ But a store or a branch writes no register, and a write to x0 writes nothing.
 After any of those, the bias targeted a register the instruction never
 produced. The comment claiming the list held "the last three destination
 registers" was false, and the stated 60% recent-result bias was not the bias
-the generator delivered — some of it was spent manufacturing dependencies on
+the generator delivered, some of it was spent manufacturing dependencies on
 registers with no in-flight producer, which are not hazards at all.
 
 **Fix** Only architectural producers enter the history; non-producing slots
@@ -703,10 +701,10 @@ writes_rd = cls < 75 and rd != 0          # R-type, I-type ALU, LOAD only
 recent_rd = [rd if writes_rd else 0] + recent_rd[:2]
 ```
 
-Making the bias real moved the same seed's coverage from 74.6% to 81.4% —
+Making the bias real moved the same seed's coverage from 74.6% to 81.4% , 
 the phantom dependencies had been displacing genuine ones.
 
-**The check now** `verif/spike/test_gen_stream.py` — unit tests over the pure
+**The check now** `verif/spike/test_gen_stream.py`, unit tests over the pure
 `generate()` function, no Spike needed. One test independently reimplements
 producer tracking and asserts that the fraction of source reads depending on a
 *real* producer within the last three instructions stays far above the uniform
@@ -715,7 +713,7 @@ and sentinel invariants that V4/V5/V6 depend on. Run with
 `python3 -m unittest test_gen_stream`.
 
 **Found by** the same external review, by comparing the comment's claim against
-the code — the exact failure mode this file's V9 entry warns about: a
+the code, the exact failure mode this file's V9 entry warns about: a
 plausible-looking bookkeeping line that changes what the regression tests
 without changing whether it passes.
 
@@ -743,7 +741,7 @@ the old model's value in two, and the halves have opposite answers:
   misreading of the privileged spec sits in both files and passes.
 
 **What the swap found: nothing.** Spike reproduced the old model's golden values
-exactly — all 32 registers plus both memory words for the hazard test, all 32
+exactly, all 32 registers plus both memory words for the hazard test, all 32
 registers for the CSR test including the trap counters, the `mcause` value
 `0x80000007`, and the interrupt-preemption marker.
 
@@ -764,8 +762,8 @@ Stated so the list is not read as claiming more than it does.
   live in exactly that gap. The coverage report prints those bins at zero rather
   than hiding them.
 - **The coverage model is hazard-oriented, not requirements-derived.** Its 59
-  bins measure what the random stimulus was built to stress — instruction
-  class, dependency distance, hazard kind, branch outcome — and nothing else.
+  bins measure what the random stimulus was built to stress, instruction
+  class, dependency distance, hazard kind, branch outcome, and nothing else.
   There are no bins for individual ALU operations, load/store widths, operand
   corners, CSR addresses, trap causes, interrupt timing, or debug entry/exit.
   A percentage of that model is a statement about hazard-stimulus quality, not
@@ -775,7 +773,7 @@ Stated so the list is not read as claiming more than it does.
   privileged-mode machinery is checked by directed end-state tests, which can
   miss transient wrong state that converges. Bringing those features through
   the retirement comparator (an RVFI-style widening of `retire_if`) is the
-  structural fix, tracked in [ROADMAP.md](ROADMAP.md).
+  structural fix.
 - **The covergroups have never executed.** Questa Starter Edition withholds
   `covergroup` under licence, so only the plain-SystemVerilog bin tally has run.
   The covergroups are written and unverified, and are labelled as such in
@@ -785,4 +783,3 @@ Stated so the list is not read as claiming more than it does.
 - **No physical design.** No SDC, no floorplan, no STA, so no fmax, area or
   critical-path numbers anywhere in this repo.
 
-[ROADMAP.md](ROADMAP.md) tracks all of these.

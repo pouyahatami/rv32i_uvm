@@ -396,7 +396,7 @@ module datapath (
   // MEM-forward time, which is why hazard_unit.sv stalls instead of forwarding
   // it. That interlock is what makes `default` safe here.
   //
-  // Getting this wrong hung tb_pipe_csr -- docs/JOURNAL.md, "The MEM-stage
+  // Getting this wrong hung tb_pipe_csr -- docs/BUGS.md, "D6 -- The MEM-stage
   // forwarding mux", has the history.
   always_comb
     unique case (ResultSrcM)

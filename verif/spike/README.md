@@ -12,11 +12,11 @@ express the same misunderstanding, the comparison passes, and the green result
 carries no information.
 
 That limitation was not hypothetical here. The old ISS was structurally
-different from the DUT in one dimension — it had no pipeline — so it was a
+different from the DUT in one dimension, it had no pipeline, so it was a
 genuinely independent check on *microarchitecture*, and it earned its keep:
-both real RTL bugs in `docs/JOURNAL.md` were found that way. But it was
+both real RTL bugs in `docs/BUGS.md` were found that way. But it was
 written by the same author as the RTL for *ISA semantics*, and
-`docs/JOURNAL.md` says so outright: the ISS was extended to have "the
+`docs/BUGS.md` says so outright: the ISS was extended to have "the
 same CSR addresses, same mcause encoding, same trap priority" as the RTL. For
 that milestone the golden model was a restatement of the design under test.
 
@@ -34,7 +34,7 @@ disagreement between Spike and this core is evidence about the core.
 | `regen.sh` | regenerates every testbench's golden values |
 
 The generated `.svh` files are checked in, so running the RTL regression
-(`rtl/run_sim.sh`) needs no Spike — only regenerating them does.
+(`rtl/run_sim.sh`) needs no Spike, only regenerating them does.
 
 ## Where the trust boundary sits
 
@@ -43,7 +43,7 @@ read/write side effect, trap cause encoding, trap priority, `mstatus` stacking
 on trap entry, `mret`.
 
 Two things do not, and cannot: `clint.sv` and `uart_tx.sv` are project-specific
-peripherals — a deliberately simplified 32-bit CLINT at a project-chosen
+peripherals, a deliberately simplified 32-bit CLINT at a project-chosen
 address, and a transmit-only UART with no baud model. There is no standard for
 them to conform to, so `rvproj_devices.cc` models them for Spike. That is a
 restatement of a *design decision*, not an independent claim about correctness,
@@ -78,7 +78,7 @@ boot ROM sits at `0x1000`, both inside the core's RAM.
 This is a **platform placement constant, not instruction semantics**. Nothing
 about how Spike executes an instruction, takes a trap, or updates a CSR is
 affected, and the change is two lines that can be diffed against upstream. The
-alternative — relocating the test programs — is not viable: `JAL`'s link value
+alternative, relocating the test programs, is not viable: `JAL`'s link value
 and `AUIPC` are PC-dependent, so the code base address is part of the expected
 result, and the core's reset vector is 0.
 
@@ -117,5 +117,5 @@ N".
 separate `imem` and `dmem` both based at 0. A program that stores to a low
 address overwrites its own instructions in Spike but not in the core. The
 current programs never re-execute an address they have written, so the final
-state agrees — but this is a real constraint on future test programs, and the
+state agrees, but this is a real constraint on future test programs, and the
 same one `docs/DESIGN_GUIDE.md` section 8 records.

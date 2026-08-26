@@ -33,7 +33,7 @@
 //   * The COVERGROUPS at the bottom express the identical model in the
 //     standard form, compiled only under `ifdef RV32I_COVERAGE, for a
 //     simulator that has the licence (EDA Playground's Riviera-PRO does; see
-//     EDA_PLAYGROUND_SETUP.md). They are NOT verified here -- treat them as
+//     RUNNING.md, Option B). They are NOT verified here -- treat them as
 //     untested until something runs them.
 //
 // The duplication is real and is the cost of the licence, not a design

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the UVM environment locally under Questa (Altera/Intel FSE install).
 #
-# The environment was written for EDA Playground (see EDA_PLAYGROUND_SETUP.md)
+# The environment was written for EDA Playground (see RUNNING.md, Option B)
 # and had never been compiled by anything. This runs it on the Questa that
 # ships with Altera Pro, which has precompiled UVM 1.1d/1.2 libraries.
 #

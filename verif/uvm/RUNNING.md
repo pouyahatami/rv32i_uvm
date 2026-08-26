@@ -145,7 +145,7 @@ retirement index against the trace before suspecting the core.
   means this environment does not exercise the CSR/trap/interrupt machinery at
   all; `tb_pipe_csr` is the directed test that covers it. Adding it needs trap
   handlers inside generated programs, which is a different kind of generator
-  (see [GAPS.md](../../docs/GAPS.md) on the riscv-dv threshold).
+  than this one.
 - **Constrained-random generation** in the sequence instead of Python
   generation. Costs Starter Edition support, and would need the program and the
   Spike reference to be generated together some other way.

@@ -10,7 +10,7 @@
 # Both simulators are supported deliberately: they disagree about enough
 # corners (X-propagation, scheduling, unsupported constructs) that agreement
 # between them is worth more than either one alone. See docs/DESIGN_GUIDE.md
-# docs/JOURNAL.md.
+# docs/BUGS.md.
 # =============================================================================
 set -u
 cd "$(dirname "$0")" || exit 1

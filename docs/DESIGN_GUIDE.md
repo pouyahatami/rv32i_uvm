@@ -6,7 +6,7 @@ This document describes the machine as it stands and why each decision is what
 it is.
 
 For how it came to be that way, including the bugs found along the route and
-what found them, see [JOURNAL.md](JOURNAL.md). That separation is deliberate:
+what found them, see [BUGS.md](BUGS.md). That separation is deliberate:
 this file should be readable by someone who has never seen the project before,
 without having to reconstruct its history first.
 
@@ -421,7 +421,7 @@ run so the gap is visible rather than assumed.
 **Compliance is the next milestone.** `riscv-arch-test` via RISCOF is the
 highest-value step remaining and is no longer blocked: a RISC-V cross-compiler
 is available and the core survives real compiled code now that the distance-3
-hazard is fixed. `docs/ROADMAP.md` tracks it.
+hazard is fixed.
 
 ## 10. Running it
 
