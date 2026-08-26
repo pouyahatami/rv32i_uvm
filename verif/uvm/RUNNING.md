@@ -25,6 +25,13 @@ the GUI. The script copies `stream.hex`, `stream_trace.txt` and a placeholder
 `riscvtest_pipe.txt` into the build directory, because the testbench opens all
 three by bare filename.
 
+If a run dies with `(vopt-7) Failed to open ... work/@_opt/_deps` and
+`Error loading design` (exit 12), something is holding file handles inside
+`build/work/` so the script's `vdel -all` could not clear it. On Windows the
+usual culprit is an editor indexer -- VS Code's C/C++ extension in
+particular. Close it or exclude `build/` and `build_seeds/` from its indexing,
+delete `verif/uvm/build/`, and re-run. It is not a code failure.
+
 ### On Starter Edition
 
 The free Questa Starter licence withholds the `svverification` feature. That

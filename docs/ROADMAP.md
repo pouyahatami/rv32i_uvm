@@ -12,14 +12,20 @@ a strong claim, but it is not the same as passing the official compliance suite.
 Until that suite runs, "verified against Spike" is the accurate phrasing and
 "compliant" is not.
 
-**Write a requirements-derived coverage plan.** The current 59-bin model was
-built outward from the hazard machinery, which is why its percentage moves when
-the hazard stimulus improves and why it says nothing about CSRs, trap causes,
-interrupt timing, load/store widths, individual ALU operations, operand
-corners, or debug entry/exit. A real plan starts from the RV32I and privileged
-specs plus this design's feature list, derives bins from requirements, and
-only then reports a percentage. Until that exists, every coverage number below
-is a hazard-stimulus metric and is labelled as such.
+**Write a requirements-derived coverage plan.** *Partly done.*
+[VMATRIX.md](VMATRIX.md) is the feature-to-check map -- every design feature
+against its stimulus, checker, assertions and coverage, with the gaps recorded
+as rows rather than omissions. The 93-bin model has since grown outward from
+the hazard machinery to cover load/store widths, individual ALU operations and
+writeback operand corners, which were named as missing here.
+
+What is still missing is the other direction: bins derived from the RV32I and
+privileged specs rather than from what the generator happens to produce. The
+model still says nothing about CSRs, trap causes, interrupt timing or debug
+entry/exit, because the random stream cannot reach them -- VMATRIX records
+which directed test covers each instead. Until bins are derived from
+requirements, every coverage number here measures stimulus quality and is
+labelled as such.
 
 **Close the hazard coverage model.** *Mostly done.* `gen_stream.py` used to
 bias only `rs1`, and only toward the immediately preceding destination. It now

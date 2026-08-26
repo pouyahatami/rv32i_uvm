@@ -470,8 +470,8 @@ This is a reversal of the original fix's stated rationale, not a drift away
 from it, and it was made for a measured reason: 64 setup stores dominated every
 40-instruction random stream, so most of each program was prologue rather than
 stimulus, and the store-heavy opening skewed the hazard mix. Removing it took
-the 10-seed coverage union from 56/59 to 59/59 bins (the table in
-[ROADMAP.md](ROADMAP.md)).
+the 10-seed coverage union from 56/59 to 59/59 bins of the hazard-only model
+in use at the time (the table in [ROADMAP.md](ROADMAP.md)).
 
 Two things were knowingly given up. First, the clear is a trusted path in the
 sense that no retirement checks it -- but not an *unchecked* one: if any byte
