@@ -1,0 +1,8 @@
+# Scripts in this repo are executed by WSL/Linux tooling even when the checkout
+# is on Windows: run_seeds.sh drives Spike inside WSL, gen_stream.py and
+# regen.sh run there too, and run_sim.sh drives Icarus/Verilator. A CRLF
+# checkout breaks their shebang lines ("/usr/bin/env: 'bash\r': No such file or
+# directory"), so pin them to LF regardless of core.autocrlf.
+*.sh  text eol=lf
+*.py  text eol=lf
+*.do  text eol=lf
