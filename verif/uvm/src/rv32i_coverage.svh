@@ -77,12 +77,11 @@
 // report showing rs1_dist.d3 at zero would mean this environment could not
 // have found it.
 //
-// THE ZERO BINS ARE THE POINT. Bins exist for JAL/JALR/LUI/AUIPC/SYSTEM even
-// though gen_stream.py cannot emit them. They are counted in a separate
-// "out of scope" group so they do not silently drag the headline number down,
-// but they are printed, which turns the scope gap documented in the package
-// header into a number in the report instead of a sentence someone has to
-// remember to read.
+// THE ZERO BINS ARE THE POINT. A bin exists for SYSTEM even though
+// gen_stream.py cannot emit it. It is counted in a separate "out of scope"
+// group so it does not silently drag the headline number down, but it is
+// printed, which turns the scope gap documented in the package header into a
+// number in the report instead of a sentence someone has to remember to read.
 // =============================================================================
 class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
   `uvm_component_utils(rv32i_coverage)
@@ -144,6 +143,9 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
   function void build_phase(uvm_phase phase);
     string ops[5];
     string dists[4];
+    string rops[10];
+    string iops[9];
+    string mems[8];
     super.build_phase(phase);
 
     foreach (prev_rd[i]) begin prev_rd[i] = 5'd0; prev_is_load[i] = 1'b0; end
@@ -153,16 +155,31 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
 
     ops   = '{"rtype", "itype", "load", "store", "branch"};
     dists = '{"none", "d1", "d2", "d3"};
+    rops  = '{"add", "sub", "sll", "slt", "sltu", "xor", "srl", "sra",
+              "or", "and"};
+    iops  = '{"addi", "slli", "slti", "sltiu", "xori", "srli", "srai",
+              "ori", "andi"};
+    mems  = '{"lb", "lh", "lw", "lbu", "lhu", "sb", "sh", "sw"};
 
     // in-scope opcodes
     foreach (ops[i]) declare("opcode", $sformatf("opcode.%s", ops[i]));
+    declare("opcode", "opcode.jal");
+    declare("opcode", "opcode.jalr");
+    declare("opcode", "opcode.lui");
+    declare("opcode", "opcode.auipc");
 
-    // deliberately out of scope for the v1 generator -- reported separately
-    declare("opcode_out_of_scope", "opcode.jal");
-    declare("opcode_out_of_scope", "opcode.jalr");
-    declare("opcode_out_of_scope", "opcode.lui");
-    declare("opcode_out_of_scope", "opcode.auipc");
+    // deliberately out of scope for the generator -- reported separately
     declare("opcode_out_of_scope", "opcode.system");
+
+    // operation decode inside each ALU family, and every memory width
+    foreach (rops[i]) declare("alu_op", $sformatf("alu.%s", rops[i]));
+    foreach (iops[i]) declare("alu_op", $sformatf("alu.%s", iops[i]));
+    foreach (mems[i]) declare("mem_width", $sformatf("mem.%s", mems[i]));
+
+    // writeback operand corners
+    declare("wb_value", "wb.zero");
+    declare("wb_value", "wb.neg");
+    declare("wb_value", "wb.pos");
 
     foreach (dists[d]) begin
       declare("rs1_dist", $sformatf("rs1_dist.%s", dists[d]));
@@ -246,10 +263,61 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
     endcase
   endfunction
 
+  // Which ALU operation the instruction decodes to. bit30 splits ADD/SUB and
+  // the two right shifts; every other funct3 requires it clear. Separate
+  // returns rather than a ternary over bin names -- see the NUL-padding note
+  // in write().
+  function string alu_name(bit [6:0] op, bit [2:0] f3, bit bit30);
+    if (op == OP_RTYPE)
+      case (f3)
+        3'b000: begin if (bit30) return "sub"; else return "add"; end
+        3'b001: return "sll";
+        3'b010: return "slt";
+        3'b011: return "sltu";
+        3'b100: return "xor";
+        3'b101: begin if (bit30) return "sra"; else return "srl"; end
+        3'b110: return "or";
+        3'b111: return "and";
+      endcase
+    else if (op == OP_ITYPE)
+      case (f3)
+        3'b000: return "addi";
+        3'b001: return "slli";
+        3'b010: return "slti";
+        3'b011: return "sltiu";
+        3'b100: return "xori";
+        3'b101: begin if (bit30) return "srai"; else return "srli"; end
+        3'b110: return "ori";
+        3'b111: return "andi";
+      endcase
+    return "";
+  endfunction
+
+  // Access width, which is the funct3 field for both loads and stores.
+  function string mem_name(bit [6:0] op, bit [2:0] f3);
+    if (op == OP_LOAD)
+      case (f3)
+        3'b000: return "lb";
+        3'b001: return "lh";
+        3'b010: return "lw";
+        3'b100: return "lbu";
+        3'b101: return "lhu";
+        default: return "";
+      endcase
+    else if (op == OP_STORE)
+      case (f3)
+        3'b000: return "sb";
+        3'b001: return "sh";
+        3'b010: return "sw";
+        default: return "";
+      endcase
+    return "";
+  endfunction
+
   // uvm_subscriber supplies the analysis_export; this is its callback.
   function void write(rv32i_retire_txn t);
     bit [4:0] rs1, rs2;
-    string    op_s;
+    string    op_s, alu_s, mem_s;
 
     // Past the sentinel the core is fetching unwritten memory. Those
     // retirements are not stimulus anyone chose, and counting them would
@@ -280,6 +348,20 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
       else if (t.rd == DATA_BASE_GPR)  hit("rd.base_ptr");
       else if (t.rd == COMPLETION_GPR) hit("rd.sentinel");
       else                            hit("rd.general");
+    end
+
+    alu_s = alu_name(opcode, funct3, t.instr[30]);
+    if (alu_s != "") hit($sformatf("alu.%s", alu_s));
+
+    mem_s = mem_name(opcode, funct3);
+    if (mem_s != "") hit($sformatf("mem.%s", mem_s));
+
+    // Writeback corners. x0 writes are architecturally discarded, so they say
+    // nothing about the value the datapath produced.
+    if (t.regwrite && t.rd != 5'd0) begin
+      if      (t.wdata == 32'd0) hit("wb.zero");
+      else if (t.wdata[31])      hit("wb.neg");
+      else                       hit("wb.pos");
     end
 
     // Nearest dependency across both source operands, and what produced it.
