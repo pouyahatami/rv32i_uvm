@@ -68,7 +68,7 @@ The UVM environment runs under Questa Starter Edition:
 
 ```bash
 cd verif/uvm && ./run_uvm.sh        # one seed
-cd verif/uvm && ./run_seeds.sh 10   # multi-seed regression + cross-seed coverage
+cd verif/uvm && ./run_seeds.sh 30   # multi-seed regression + cross-seed coverage
 ```
 
 The complete flow for one seed, together with the outer multi-seed regression,
@@ -76,25 +76,28 @@ is shown below:
 
 ![RV32I UVM and Spike verification flow: generate a hazard-biased program, run Spike offline, load the program through the UVM driver, monitor DUT retirements, compare them in the scoreboard, and collect functional coverage](images/riscv_uvm_verification_flow.png)
 
-Ten seeds pass with zero mismatches, zero `UVM_ERROR`, and zero simulator
-errors, checking 72-83 instructions each against Spike, at 68-80% of the
-59-bin hazard coverage model per seed. Across the ten, all 59 bins are hit.
-That number measures hazard-stimulus quality against a model
-built for the hazard machinery; it is not a claim of ISA-level coverage, which
-has no model yet (`docs/ROADMAP.md`).
+Thirty seeds pass with zero mismatches, zero `UVM_ERROR`, and zero simulator
+errors, checking 49-76 instructions each against Spike, at 39-76% of the 93-bin
+coverage model per seed. Across the thirty, every bin is hit.
+
+That union is a stimulus-quality number, not ISA closure. The model bins the
+instruction mix, the ALU operation actually decoded, memory widths, writeback
+operand corners, and RAW-dependency distance against instruction type — which
+is what the generator controls. It has no bins for CSRs, traps, interrupts,
+debug, misalignment or illegal encodings, because the random stream does not
+produce those; [docs/VMATRIX.md](docs/VMATRIX.md) shows which checker covers
+each of them instead, and where nothing does.
 
 A seed passes only if the UVM verdict is PASS *and* the simulator's own error
 count is zero -- bound-assertion failures land in the second count, not the
 first, and the regression's failure path is itself verified by a seeded
 always-false assertion (`docs/BUGS.md`, V12).
 
-The `x_op_rs1.load_d{1,2,3}` bins are reached when an early body load consumes
-the `x1` base pointer written immediately before the body. The generator still
-never rewrites `x1` later; recurring dependent-base loads would need a bounded
-scratch pointer, which `docs/ROADMAP.md` tracks.
-
 The regression prints each hole by name rather than leaving it inside a
-percentage, so a gap has to be argued with rather than averaged away.
+percentage, so a gap has to be argued with rather than averaged away. That is
+how the thinnest spot in the current generator was found: `alu.srai` is
+emitted about once per two programs and is often jumped over, so it needs
+roughly twenty seeds before the union closes.
 
 ![UVM report summary from a single-seed run: 0 errors, 0 warnings](images/uvm_run.png)
 

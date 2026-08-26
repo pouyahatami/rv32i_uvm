@@ -461,7 +461,8 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
                   grp, g_hit[grp], g_tot[grp],
                   100.0 * real'(g_hit[grp]) / real'(g_tot[grp]),
                   (grp == "opcode_out_of_scope") ?
-                    "   (excluded from total -- v2 scope)" : "                                    "),
+                    "   (excluded from total -- SYSTEM not generated)" :
+                    "                                               "),
         UVM_LOW)
     end
     `uvm_info("COVERAGE",

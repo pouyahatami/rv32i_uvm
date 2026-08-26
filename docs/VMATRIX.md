@@ -35,6 +35,8 @@ How to read the columns:
 | JAL (resolved in ID) | random, hazard | lockstep, end-state | `a_jump_flushes` | `opcode.jal` | random stimulus added; link-register writeback checked by lockstep |
 | JALR (resolved in EX) | random (AUIPC-paired), hazard | lockstep | `a_branch_flushes_both` (fires on PCSrcE) | `opcode.jalr` | random stimulus added; target register is a forced d1 dependency by construction |
 | LUI / AUIPC | random, hazard | lockstep, end-state | none (datapath only) | `opcode.lui`, `opcode.auipc` | random stimulus added |
+| R-type ALU ops (ADD SUB SLL SLT SLTU XOR SRL SRA OR AND) | random (uniform over funct3, funct7 bit split) | lockstep (wdata), end-state | none | `alu.add` … `alu.and` | verified |
+| I-type ALU ops incl. immediate shifts (SLLI/SRLI/SRAI) | random (uniform over funct3; shamt drawn separately) | lockstep (wdata), end-state | none | `alu.addi` … `alu.andi` | verified; `alu.srai` needs ~20 seeds to hit — see note 6 |
 | Loads LB/LH/LW/LBU/LHU (sign/zero extension) | random (width-weighted, aligned) | lockstep (wdata) | none | `mem.lb/lh/lw/lbu/lhu` | verified for aligned; misaligned never generated — see note |
 | Stores SB/SH/SW (byte enables) | random (width-weighted, aligned) | lockstep (addr + width-masked data) | none | `mem.sb/sh/sw` | verified for aligned; misaligned never generated — see note |
 | Writeback value integrity | random, all directed | lockstep (wdata), end-state | none | `wb.{zero,neg,pos}` operand-corner bins | verified |
@@ -70,3 +72,9 @@ How to read the columns:
    nothing random and only incidentally by directed programs.
 5. **No riscv-arch-test run.** "Verified against Spike on generated
    streams" is the accurate claim; "compliant" is not (ROADMAP.md).
+6. **`alu.srai` is the generator's thinnest bin.** The I-type arm draws
+   `funct3` uniformly from eight values and SRAI is half of one of them, so a
+   40-instruction program emits it about once every two programs — and a
+   forward jump often skips it. Ten seeds left it as the single union hole;
+   thirty close it. It is reachable, not unreachable, but the margin is thin
+   enough that weighting the I-type pool would be a fair change.

@@ -34,6 +34,14 @@ seeds across three generator states and the reset-time dmem initialization:
 | union across 10 seeds | 48/59, 81.4% | 56/59, 94.9% | 56/59, 94.9% | **59/59, 100%** |
 | bins no seed reached | 11 | 3 | 3 | 0 |
 
+Those four columns are all measured against the **59-bin hazard-only model**,
+which is what made them comparable. The model has since grown to 93 bins
+(instruction mix including jumps, decoded ALU operation, memory width,
+writeback corners), so its numbers are not a fifth column of the same table:
+against the 93-bin model, 30 seeds give 39-76% per seed and **93/93, 100%**
+union. The per-seed figure dropped because the model got harder, not because
+the stimulus got worse.
+
 The generator's invariants are now pinned by `verif/spike/test_gen_stream.py`.
 
 No hazard-model bin remains unreachable across the ten seeds. Removing the
