@@ -62,13 +62,13 @@ WRITING_OPCODES = {g.OP_RTYPE, g.OP_ITYPE, g.OP_LOAD,
 
 
 def body_of(words, random_instr_count):
-    """The randomly generated slice: after the prologue, before pad+sentinel.
+    """The randomly generated slice: after the setup words, before pad+sentinel.
 
     A JALR pair emits two words, so the body can be longer than
     random_instr_count -- slice by position, not by count.
     """
-    prologue = len(g.USABLE_GPRS) + 1
-    return words[prologue:len(words) - g.PAD_WORDS - 1]
+    body_base = len(g.USABLE_GPRS) + g.BASE_PTR_WORD
+    return words[body_base:len(words) - g.PAD_WORDS - g.SENTINEL_WORD]
 
 
 def streams(n_seeds=50, random_instr_count=40):
@@ -138,7 +138,7 @@ class TestControlTransfers(unittest.TestCase):
         # jump through a stale register.
         for seed, words, n in streams():
             body = body_of(words, n)
-            base = len(g.USABLE_GPRS) + 1
+            base = len(g.USABLE_GPRS) + g.BASE_PTR_WORD
             targets = set()
             for i, w in enumerate(body):
                 if opcode(w) in (g.OP_BRANCH, g.OP_JAL):

@@ -32,6 +32,10 @@ DATA_BASE_GPR = 1
 COMPLETION_GPR = 31
 COMPLETION_VALUE = 0x7FF
 NOP = 0x00000013
+BASE_PTR_WORD = 1                              # The ADDI that loads x1, the
+                                               # data base pointer.
+SENTINEL_WORD = 1                              # The ADDI that writes x31, the
+                                               # completion sentinel.
 MEMAX_BRANCH_OFFSET = 48                       # Chosen by the generator.
 PAD_WORDS = MEMAX_BRANCH_OFFSET // 4           # Enough padding for the longest
                                                # branch offset from the last
@@ -135,14 +139,12 @@ def generate(rng, random_instr_count):
 
     # Zero x2..x30 so Spike and the DUT start the body with identical registers
     # One "addi rN, x0, 0" per register
-    prologue = [enc_i(OP_ITYPE, r, 0b000, 0, 0) for r in USABLE_GPRS]
+    zero_regs = [enc_i(OP_ITYPE, register, 0b000, 0, 0) for register in USABLE_GPRS]
 
-    # dmem needs no init: the UVM driver backdoor-clears it, Spike zeroes RAM.
+    # dmem needs no init: the UVM driver backdoor-clears it
 
     # rd of the last three instructions, newest first (0 = wrote no register);
-    # biased_src() reuses these to hit both forwarding paths and the regfile
-    # bypass (docs/BUGS.md, D4). Seeded with x1: its ADDI is assembled
-    # directly before the body below.
+    # biased_src() reuses these to hit both forwarding paths and the regfile bypass
     recent_rd = [DATA_BASE_GPR, 0, 0]
 
     def biased_src():
@@ -151,11 +153,9 @@ def generate(rng, random_instr_count):
         RECENT_RESULT_BIAS_PERCENT of the time this picks one of the last three
         slots uniformly, so the stimulus asks for all three hazard distances
         rather than piling onto the easiest one. A slot holding 0 means that
-        instruction produced nothing -- fall through to a uniform pick rather
-        than fabricating a dependency on x0, which is never a hazard.
+        instruction wrote no register. 
 
-        Every register this can return is architecturally defined at this
-        point: x1 is the base pointer, x2..x30 are zeroed by the prologue, and
+        x1 is the base pointer, x2..x30 are zeroed up front, and
         x0 is hardwired. x31 is the sentinel and is deliberately unreachable.
         """
         if rng.randrange(100) < RECENT_RESULT_BIAS_PERCENT:
@@ -166,13 +166,15 @@ def generate(rng, random_instr_count):
 
     def push_producer(reg, writes):
         recent_rd.insert(0, reg if (writes and reg != 0) else 0)
-        del recent_rd[3:]
+        del recent_rd[3:] # delete from index 3 onwards
 
     body = []
-    body_base = len(prologue) + 1        # word index of the first body word
-    # Absolute word indices some earlier control transfer can land on. A JALR
-    # entered without its paired AUIPC would jump through a stale register, so
-    # a pair is only emitted when its JALR word is not a known target.
+    # Layout: zero_regs | base-pointer ADDI | body | NOP padding | sentinel
+    body_base = len(zero_regs) + BASE_PTR_WORD
+
+    # Every word index an already-emitted branch or jump can land on
+    # AUIPC+JALR below only works as a unit: a jump straight onto the JALR
+    # skips the AUIPC, leaving a random address in rt
     jump_targets = set()
 
     for _ in range(random_instr_count):
@@ -241,9 +243,6 @@ def generate(rng, random_instr_count):
             body.append(enc_j(OP_JAL, rd, off))
             push_producer(rd, True)
         elif cls < 94 and (idx + 1) not in jump_targets:    # AUIPC+JALR pair
-            # AUIPC pins the target to the current PC, so the JALR lands
-            # 16/32/48 bytes past the AUIPC -- same bound as a branch. The
-            # rt read is a forced distance-1 RAW hazard on the jump target.
             rt = rng.choice(list(USABLE_GPRS))
             off = rng.randint(1, 3) * 16
             jump_targets.add(idx + off // 4)
@@ -256,20 +255,22 @@ def generate(rng, random_instr_count):
             body.append(enc_u(opc, rd, rng.randrange(1 << 20)))
             push_producer(rd, True)
 
-    # A JALR pair emits two words, so the program is measured, not assumed.
-    program_words = len(prologue) + 1 + len(body) + PAD_WORDS + 1
+    # A JALR pair emits two words, so we cant guess how many instr in the program
+    program_words = body_base + len(body) + PAD_WORDS + SENTINEL_WORD
     data_window_base = compute_data_window_base(program_words)
 
-    words = prologue
+    words = zero_regs
     words.append(enc_i(OP_ITYPE, DATA_BASE_GPR, 0b000, 0, data_window_base))
     words += body
     # Pad so a forward transfer among the last few instructions lands inside
-    # the program rather than in unwritten memory.
+    # the program rather than in unwritten memory
     words += [NOP] * PAD_WORDS
     words.append(enc_i(OP_ITYPE, COMPLETION_GPR, 0b000, 0, COMPLETION_VALUE))
     return words
 
-
+# Spike loads ELF excecutables
+# This loop writes a tiny assembly file that contains no instructions at all 
+# just .word directives
 def build_elf(words, workdir, cross):
     asm = os.path.join(workdir, "stream.S")
     with open(asm, "w") as f:
@@ -292,18 +293,19 @@ def build_elf(words, workdir, cross):
 #   core   0: 3 0x00000008 (0x00052083) x 1 0x2a mem 0x00000010    load
 COMMIT = re.compile(
     r"core\s+\d+:\s+\d+\s+0x([0-9a-f]+)\s+\(0x([0-9a-f]+)\)(.*)")
-REGWRITE = re.compile(r"\bx\s*(\d+)\s+0x([0-9a-f]+)")
+REGWRITE = re.compile(r"\bx\s*(\d+)\s+0x([0-9a-f]+)")   # \b: never inside 0x...
 
-# Only a store prints `mem` with two operands (address then value); a load
-# prints `mem <addr>` and puts the value in the register field. REGWRITE's `\bx`
-# cannot fire on the x inside `0x...` -- no word boundary between a digit and x
-# -- which is what stops these two patterns stealing each other's operands.
+# A store prints two operands after `mem`. a load prints only the address and
+# puts its value in the `x` field. Requiring two is what selects stores.
 MEMWRITE = re.compile(r"\bmem\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)")
 
 
 def spike_trace(spike, elf, sentinel_word, memmap, max_instr):
+    # Make a log for spike to write into 
     with tempfile.NamedTemporaryFile("w+", suffix=".log", delete=False) as log:
         logname = log.name
+
+    # Need to set these flags to make spike behave like the DUT core 
     cmd = [spike, "-l", "--log-commits", f"--log={logname}",
            "--isa=rv32i_zicsr", "--priv=m", f"-m{memmap}",
            f"--instructions={max_instr}", elf]
