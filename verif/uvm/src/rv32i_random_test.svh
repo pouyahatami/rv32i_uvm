@@ -23,20 +23,12 @@ class rv32i_random_test extends uvm_test;
 
     phase.raise_objection(this);
 
-    // Program length is not a runtime plusarg: the program and its Spike
-    // reference trace are generated together by verif/spike/gen_stream.py
-    // --num-instr, and changing one without the other would give a
-    // scoreboard checking against the wrong program. +STREAM=<file> and
-    // +TRACE=<file> select which generated pair to use.
     seq = rv32i_random_seq::type_id::create("seq");
     seq.start(env.agt.sqr);
 
-    // Wait for the scoreboard to see the sentinel retire (or to give up on
-    // a divergence), plus a small margin for the pipeline to drain. The
-    // watchdog covers the case where the core never reaches the sentinel at
-    // all: without it a fetch into unloaded memory or a lost retirement
-    // hangs the simulation with no diagnosis, which is the least useful
-    // failure mode a regression can have.
+    // Wait for the scoreboard to see the sentinel retire, or give up on a
+    // divergence, plus a margin for the pipeline to drain. The watchdog turns
+    // "never reached the sentinel" into a diagnosed failure instead of a hang.
     timed_out = 1'b1;
     fork
       begin
@@ -68,14 +60,10 @@ class rv32i_random_test extends uvm_test;
     phase.drop_objection(this);
   endtask
 
-  // One machine-readable verdict line, emitted after every other component
-  // has reported. run_questa.do greps the log for this to set its exit code,
-  // because the report server's error count is a SystemVerilog object and
-  // cannot be queried from the simulator's TCL shell. Counting UVM_ERROR and
-  // UVM_FATAL rather than this test's own num_mismatches means a failure
-  // raised anywhere in the environment -- a missing stream file, a config_db
-  // miss in a driver build_phase -- also fails the run, instead of being
-  // reported and then quietly passing.
+  // One machine-readable verdict line for the run scripts to grep, emitted
+  // after every other component has reported. It counts UVM_ERROR/UVM_FATAL
+  // rather than this test's own num_mismatches, so a failure raised anywhere
+  // in the environment fails the run rather than being reported and passing.
   function void report_phase(uvm_phase phase);
     uvm_report_server svr;
     int unsigned      n_err;

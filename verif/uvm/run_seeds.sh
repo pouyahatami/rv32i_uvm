@@ -5,30 +5,18 @@
 #   ./run_seeds.sh 100          # 100 seeds
 #   ./run_seeds.sh 100 200      # 100 seeds, 200 instructions each
 #
-# WHY THIS SCRIPT STRADDLES TWO OPERATING SYSTEMS
+# Generation and simulation run on different operating systems: Spike and the
+# riscv64-unknown-elf assembler live in WSL, Questa is the Windows-native
+# Altera install. They meet through the filesystem, and stream.hex /
+# stream_trace.txt are the handoff.
 #
-# The reference model and the simulator cannot run in the same place:
-#   * Spike has no Windows build -- it lives in WSL Ubuntu, along with the
-#     riscv64-unknown-elf assembler gen_stream.py shells out to.
-#   * Questa is the Windows-native Altera install.
-# They meet through the filesystem: C:\Projects\... on one side is
-# /mnt/c/Projects/... on the other, same bytes. Generation runs via `wsl`,
-# simulation runs natively, and stream.hex/stream_trace.txt are the handoff.
+# vlog runs once, since only the two data files change between seeds and the
+# testbench takes those as +STREAM/+TRACE plusargs. Each extra seed then costs
+# an elaboration (~2s) rather than a recompile (~8s).
 #
-# WHY COMPILE ONCE AND LOOP vsim
-#
-# The RTL and testbench do not change between seeds -- only the two data files
-# do, and the testbench takes those as +STREAM/+TRACE plusargs at runtime. So
-# vlog runs once and each additional seed costs one elaboration instead of a
-# full recompile: roughly 8s for the first seed and ~2s for each one after.
-#
-# CROSS-SEED COVERAGE
-#
-# The coverage collector reports per-run holes. This script intersects them:
-# a bin is only reported as a true hole if NO seed hit it. That distinction is
-# the entire value of running more than one seed -- a hole in a single run may
-# just be that program's luck, while a hole across 50 seeds is a statement
-# about the generator.
+# Per-seed coverage holes are intersected: a bin is reported only if NO seed
+# hit it. A hole in one run may be that program's luck; a hole across 50 is a
+# statement about the generator.
 set -u
 
 NSEEDS=${1:-20}
@@ -96,19 +84,13 @@ for s in $(seq 1 "$NSEEDS"); do
       +STREAM=s$s.hex +TRACE=s$s.trace \
       tb_uvm_top -do "run 500us; quit -f" > sim_$s.log 2>&1
 
-  # A seed passes only if the test says so AND the run logged no UVM_ERROR or
-  # UVM_FATAL. Checking only for "UVM TEST PASSED" is not enough: that string
-  # comes from the scoreboard's own mismatch count, so errors raised anywhere
-  # else -- the coverage collector, a config_db lookup, a protocol check --
-  # print it anyway. The first version of this script did exactly that and
-  # reported 30/30 PASS on runs carrying 13 UVM_ERRORs each.
+  # "UVM TEST PASSED" alone is not enough: it comes from the scoreboard's own
+  # mismatch count, so an error raised anywhere else -- the coverage collector,
+  # a config_db lookup -- prints it anyway.
   nerr=$(sed -n 's/^# UVM_ERROR *: *\([0-9]*\).*/\1/p' sim_$s.log | tail -1)
   nfat=$(sed -n 's/^# UVM_FATAL *: *\([0-9]*\).*/\1/p' sim_$s.log | tail -1)
-  # Questa's own error count, which is where bound-SVA assertion failures
-  # land -- they are simulator errors, NOT UVM report-server errors, so the
-  # three checks above are blind to them. Before this gate existed, a seeded
-  # always-false assertion produced 153 errors and this script still printed
-  # PASS for every seed.
+  # Questa's own count, where bound-SVA failures land: they are simulator
+  # errors, not UVM report-server errors, so the checks above cannot see them.
   qerr=$(sed -n 's/^# Errors: \([0-9][0-9]*\),.*/\1/p' sim_$s.log | tail -1)
   if grep -q "UVM TEST PASSED" sim_$s.log && [ "${nerr:-1}" = "0" ] \
      && [ "${nfat:-1}" = "0" ] && [ "${qerr:-1}" = "0" ]; then

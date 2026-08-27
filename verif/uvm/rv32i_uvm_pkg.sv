@@ -12,41 +12,20 @@
 // retirements); this package reads both with $fopen/$sscanf. See that
 // script's docstring for why the reference is precomputed rather than live.
 //
-// Shape: a commit/retire interface sampled by a monitor and checked against
-// a reference model, the same architecture used by the UVM-for-RISC-V
-// environments this was modelled on (gopro-uvm-rtl-verification, OpenHW
-// core-v-verif).
+// Scope: R-type ALU, the full I-type ALU set including immediate shifts, LOAD,
+// STORE, forward-only BRANCH and JAL, AUIPC-paired JALR, and LUI. SYSTEM
+// (ECALL, CSR ops, MRET) is deliberately out of scope -- tb_pipe_csr in
+// rtl/tb_pipe.sv is the directed test covering that path, and docs/VMATRIX.md
+// maps every feature to what checks it.
 //
-// Scope, stated explicitly rather than left implicit: the stream covers
-// R-type ALU, the full I-type ALU set including the immediate shifts, LOAD,
-// STORE, forward-only BRANCH, forward-only JAL, AUIPC-paired JALR, and LUI.
-// SYSTEM (ECALL, CSR ops, MRET) is out of scope, which is a bounded extension
-// rather than a gap that was missed: excluding it means this environment does
-// not exercise the trap/interrupt/CSR machinery at all, and tb_pipe_csr in
-// rtl/tb_pipe.sv is the directed test covering that path. docs/VMATRIX.md
-// maps every feature to what actually checks it.
+// Nothing here randomizes at simulation time, which is why the environment
+// runs under licences that withhold SystemVerilog randomization (Questa
+// Starter among them). Adding a randomize(), covergroup, constraint or
+// randcase gives that up -- see RUNNING.md.
 //
-// Nothing here randomizes at simulation time -- the stream is generated in
-// Python. That is why the environment runs under licences that withhold
-// SystemVerilog randomization, Questa Starter Edition among them. See
-// RUNNING.md. Do not add a randomize() call, a covergroup, a constraint or a
-// randcase without knowing you are giving that up.
-//
-// -----------------------------------------------------------------------------
-// File layout: this package is a manifest. Every class lives in its own file
-// under src/, included below. `include is textual substitution, so the compiler
-// still sees exactly one package and one namespace -- splitting is a
-// file-organisation choice, not an architectural one.
-//
-// INCLUDE ORDER IS A DEPENDENCY, not a style preference. Each class must be
-// included after everything it references: transactions before the sequencer
-// typedef that parameterises on them, components before the agent that
-// instantiates them, agent and scoreboard before the env. Reordering these
-// lines produces "type not found" errors that read like missing files.
-//
-// Requires +incdir+verif/uvm on the vlog command line; run_uvm.sh and
-// run_seeds.sh both pass it.
-// -----------------------------------------------------------------------------
+// This package is a manifest: each class lives in its own file under src/.
+// Include order is a dependency -- each class must follow everything it
+// references. Requires +incdir+verif/uvm, which both run scripts pass.
 // =============================================================================
 
 package rv32i_uvm_pkg;

@@ -9,11 +9,9 @@ class rv32i_monitor extends uvm_monitor;
   virtual retire_if.MON            vif;
   uvm_analysis_port #(rv32i_retire_txn) ap;
 
-  // Set once the sentinel retires. Past it the core is executing unwritten
-  // memory -- X instructions "retire" every cycle until the test winds down,
-  // and flagging those as RETIRE_X would fail every clean run on noise the
-  // scoreboard and coverage collector already ignore with this same guard.
-  // Publishing continues so the downstream guards stay exercised.
+  // Set at the sentinel. Past it the core executes unwritten memory and X
+  // instructions "retire" every cycle, so RETIRE_X would fire on every clean
+  // run. Publishing continues so the downstream guards stay exercised.
   bit finished;
 
   function new(string name, uvm_component parent);
@@ -43,12 +41,8 @@ class rv32i_monitor extends uvm_monitor;
         txn.store_data   = vif.mon_cb.store_data;
         txn.store_funct3 = vif.mon_cb.store_funct3;
 
-        // An unknown on a retirement the environment is about to check is a
-        // defect in its own right, and this is the last place it is still
-        // visible: rv32i_retire_txn's fields are 4-state specifically so the
-        // X survives to here. The qualified fields (rd/wdata, store_*) are
-        // only checked when their valid bit says they carry meaning -- an X
-        // on wdata under regwrite==0 is dont-care, not a bug.
+        // Qualified fields are only checked when their valid bit says they
+        // carry meaning: an X on wdata under regwrite==0 is don't-care.
         if (!finished &&
             ($isunknown({txn.pc, txn.instr, txn.regwrite, txn.store_valid}) ||
              (txn.regwrite === 1'b1 &&

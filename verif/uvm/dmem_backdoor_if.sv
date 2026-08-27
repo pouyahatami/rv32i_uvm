@@ -7,11 +7,9 @@
 // no reset network or port to the synthesizable memory.
 // =============================================================================
 
-// dmem.sv is byte-addressable, so its backdoor has the same element width as
-// the underlying array. clear() is intentionally a zero-time testbench task:
-// modelling this as reset logic in dmem.sv would turn a RAM initialization
-// precondition into 16 KB of hardware reset behaviour and can prevent RAM
-// inference in synthesis.
+// clear() is a zero-time testbench task on purpose: modelling it as reset
+// logic in dmem.sv would turn an initialization precondition into 16 KB of
+// hardware reset, which can also prevent RAM inference in synthesis.
 interface dmem_backdoor_if #(parameter DMEM_BYTES = 16384)
                              (ref logic [7:0] dmem [DMEM_BYTES-1:0]);
 

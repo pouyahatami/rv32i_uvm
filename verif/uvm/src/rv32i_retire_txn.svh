@@ -13,12 +13,9 @@
 //   store_funct3 - store width: 000 = SB, 001 = SH, 010 = SW
 // ===========================================================================
 class rv32i_retire_txn extends uvm_object;
-  // Four-state on purpose. These fields carry DUT observations, and the DUT
-  // interface is 4-state: declaring them `bit` would silently convert an X
-  // on the wires to 0 at the assignment, BEFORE the scoreboard's !==
-  // comparison could see it -- so an unknown writeback would compare equal
-  // to a legitimate zero and pass. `logic` preserves the X so it both fails
-  // the comparison and trips the monitor's explicit $isunknown check.
+  // 4-state on purpose: `bit` would convert an X on the DUT wires to 0 at
+  // assignment, before the scoreboard's !== could see it, so an unknown
+  // writeback would compare equal to a legitimate zero and pass.
   logic [31:0] pc;
   logic [31:0] instr;
   logic [4:0]  rd;

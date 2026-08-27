@@ -1,14 +1,10 @@
 // =============================================================================
 // verif/uvm/rv32i_if.sv
 //
-// Minimal clock/reset interface for the UVM driver. Deliberately separate
-// from retire_if.sv (rtl/retire_if.sv), which is a read-only, monitor-side
-// commit boundary -- this interface is the *drive* side, and the only
-// thing this verification environment is allowed to force onto the DUT
-// is reset. Everything else the driver does (loading a program into
-// memory) goes through imem_backdoor_if.sv instead of a synthesizable
-// port, so this interface can never be mistaken for adding a new
-// synthesizable input to the CPU.
+// Minimal clock/reset interface for the UVM driver -- the drive side, as
+// opposed to retire_if.sv's read-only monitor tap. Reset is the only thing the
+// environment forces onto the DUT; program loading goes through
+// imem_backdoor_if.sv rather than a synthesizable port.
 // =============================================================================
 
 interface rv32i_if(input logic clk);

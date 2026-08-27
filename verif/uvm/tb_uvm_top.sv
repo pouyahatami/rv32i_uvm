@@ -1,13 +1,10 @@
 // =============================================================================
 // verif/uvm/tb_uvm_top.sv
 //
-// UVM entry point. Instantiates the DUT completely unmodified (same
-// top.sv used by rtl/tb_pipe.sv's directed tests), then grabs virtual
-// interface handles to three verification hooks: rtl/retire_if.sv's `retire`
-// instance and the interfaces imem_backdoor_bind.sv and dmem_backdoor_bind.sv
-// attach to imem and dmem. No port was added to the synthesizable modules for
-// of this; the synthesizable RTL file list for this environment is
-// identical to rtl/tb_pipe.sv's.
+// UVM entry point. Instantiates the DUT unmodified -- the same top.sv the
+// directed tests use -- then takes virtual interface handles to three hooks:
+// retire_if's `retire` instance, and the two backdoor interfaces attached to
+// imem and dmem by bind. No synthesizable port was added for any of it.
 // =============================================================================
 
 `include "uvm_macros.svh"
@@ -25,11 +22,9 @@ module tb_uvm_top;
   logic [7:0]  uart_tx_byte_o;
   logic        uart_tx_valid_o;
 
-  // Placeholder TESTFILE -- $readmemh (in imem.sv) needs SOME file to
-  // exist at time 0. Every word gets overwritten by the UVM driver's
-  // backdoor load before reset deasserts, so this file's actual contents
-  // never matter; riscvtest_pipe.txt is reused here only because it's
-  // already guaranteed to exist and be the right word count.
+  // Placeholder: imem.sv's $readmemh needs a file at time 0. The driver's
+  // backdoor load overwrites every word before reset deasserts, so the
+  // contents never matter.
   top #(.TestFile("riscvtest_pipe.txt")) dut(
       .clk                 (clk),
       .reset               (vif.reset),
@@ -47,8 +42,7 @@ module tb_uvm_top;
     virtual imem_backdoor_if imem_bd_vif;
     virtual dmem_backdoor_if dmem_bd_vif;
 
-    // grab handles to interfaces the DUT itself already instantiates --
-    // see file header.
+    // handles to interfaces the DUT already instantiates -- see file header
     retire_vif = dut.rvpipe.retire;
     imem_bd_vif = dut.imem.imem_backdoor;
     dmem_bd_vif = dut.bus.dmem_inst.dmem_backdoor;
@@ -59,9 +53,8 @@ module tb_uvm_top;
         null, "*", "imem_bd_vif", imem_bd_vif);
     uvm_config_db#(virtual dmem_backdoor_if)::set(null, "*", "dmem_bd_vif", dmem_bd_vif);
 
-    // Default test hardcoded so this runs with zero required plusargs on
-    // a first attempt -- run_test() still honors a +UVM_TESTNAME override
-    // on the simulator command line if you add a second test later.
+    // Default so the environment runs with no required plusargs;
+    // +UVM_TESTNAME still overrides it.
     run_test("rv32i_random_test");
   end
 

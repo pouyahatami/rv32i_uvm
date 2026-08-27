@@ -8,80 +8,22 @@
 // whether those instructions covered the forwarding paths this design exists
 // to implement, or were merely independent ADDs.
 //
-// -----------------------------------------------------------------------------
-// WHY THERE ARE TWO IMPLEMENTATIONS OF ONE COVERAGE MODEL
+// TWO IMPLEMENTATIONS OF ONE MODEL. The bin tally below is plain
+// SystemVerilog and always runs, including on Questa FSE, whose licence
+// refuses covergroups. It produces every coverage number this project
+// reports. The covergroups at the bottom express the same model in the
+// standard form under `ifdef RV32I_COVERAGE, for a simulator that has the
+// licence. They have never been executed, and the two are not bin-for-bin
+// identical -- docs/VMATRIX.md, known hole 7.
 //
-// SystemVerilog covergroups are the industry standard and are what belongs in
-// a UVM environment. They are also a *licensed feature*: Questa FSE, the
-// edition bundled with Altera Pro and the only simulator available on this
-// machine, refuses them outright --
+// Everything sampled comes from retire_if, so this is architectural coverage:
+// it measures the stimulus, not the microarchitecture, and dependency distance
+// is counted in retirements rather than cycles. docs/VMATRIX.md, hole 6, has
+// what that does and does not let you claim.
 //
-//   ** Error: (vsim-1) Unable to checkout verification license - required for
-//      testbench features (randomize, randcase, randsequence, covergroup).
-//
-// Its license grants exactly one feature, `intelqsimstarter`. There is no flag
-// that works around this.
-//
-// Shipping covergroups alone would mean a coverage model that has never been
-// executed. This project has been bitten five times by code that survived
-// careful review and was wrong the first time it ran, so that was not an
-// acceptable outcome. Instead:
-//
-//   * The BIN TALLY below is plain SystemVerilog -- an associative array of
-//     counters, no licensed constructs. It always runs, including on Questa
-//     FSE, and it is what prints the coverage report. It is verified.
-//   * The COVERGROUPS at the bottom express the identical model in the
-//     standard form, compiled only under `ifdef RV32I_COVERAGE, for a
-//     simulator that has the licence (EDA Playground's Riviera-PRO does; see
-//     RUNNING.md, Option B). They are NOT verified here -- treat them as
-//     untested until something runs them.
-//
-// The duplication is real and is the cost of the licence, not a design
-// preference. Both are sampled from the same write() call, so neither can
-// silently observe different traffic, and shared bin names are shared
-// spellings -- but the two models are NOT bin-for-bin identical: the tally
-// has hazard-kind bins (load_use vs alu_raw) the covergroups lack, and
-// cg_branch has a kind-by-outcome cross the tally lacks. Reconciling them is
-// part of the work of first running the covergroups. Until then every
-// coverage number this project reports comes from the tally, and only from
-// the tally.
-// -----------------------------------------------------------------------------
-//
-// WHAT IS SAMPLED, AND WHAT THAT MEASURES
-//
-// Everything here is derived from retire_if alone -- pc, instr, rd, wdata,
-// regwrite -- so this is *architectural* coverage: it measures the stimulus,
-// not the microarchitecture. That boundary is deliberate (same reasoning as
-// the scoreboard's: check the committed contract, stay immune to pipeline
-// changes) but it has a real consequence worth stating plainly:
-//
-//   The forwarding-mux selects (ForwardAE/ForwardBE) are NOT covered here.
-//   They are internal to hazard_unit.sv and invisible at the retire boundary.
-//   rs1_dist/rs2_dist cover the *stimulus condition* that drives forwarding --
-//   a RAW dependency at distance 1/2/3 -- which is the thing the generator
-//   controls and therefore the thing worth measuring for stimulus quality.
-//   Covering the mux selects themselves needs a second collector bound into
-//   hazard_unit. That is a genuine gap, not a solved problem.
-//
-// DEPENDENCY DISTANCE IS MEASURED IN RETIREMENTS, NOT CYCLES.
-// Distance 1 means "the immediately preceding retired instruction wrote the
-// register this one reads". Under stalls the pipeline distance differs from
-// the retirement distance -- a load-use hazard stalls a cycle, so its
-// architectural distance 1 becomes a longer pipeline gap. Retirement distance
-// is the right metric for judging *stimulus*, because it is what the generator
-// chooses; it is the wrong metric for judging forwarding-path activation. Read
-// the numbers as "did we ask for the hard cases", not "did the hard paths run".
-//
-// Distance 3 is called out specifically because DESIGN_GUIDE.md Section 10
-// records a real distance-3 RAW bug that survived every static review. A
-// report showing rs1_dist.d3 at zero would mean this environment could not
-// have found it.
-//
-// THE ZERO BINS ARE THE POINT. A bin exists for SYSTEM even though
-// gen_stream.py cannot emit it. It is counted in a separate "out of scope"
-// group so it does not silently drag the headline number down, but it is
-// printed, which turns the scope gap documented in the package header into a
-// number in the report instead of a sentence someone has to remember to read.
+// Bins are declared up front so a hole prints as a zero rather than being
+// invisible. Bins the generator cannot reach (SYSTEM) sit in a separate
+// out-of-scope group so they do not drag the headline number down.
 // =============================================================================
 class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
   `uvm_component_utils(rv32i_coverage)
@@ -97,15 +39,11 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
 
   // ---- history used to derive the above ----
   // prev_rd[0] is the immediately preceding retirement's destination, 0 if it
-  // wrote nothing. Per-instruction slots (not per-write) so the index is a
-  // true instruction distance.
+  // wrote nothing. Per-instruction slots, so the index is a true distance.
   bit [4:0]    prev_rd[3];
-  // Was the instruction in that slot a LOAD? A RAW dependency on a load's
-  // result at distance 1 is the ONE hazard this pipeline cannot forward its
-  // way out of -- the value is still in memory when the consumer needs it, so
-  // hazard_unit must stall. Distinguishing it from an ALU-producer RAW is the
-  // difference between covering "a hazard happened" and covering "the stall
-  // path ran", and only the second one is interesting.
+  // A distance-1 RAW on a load is the one hazard forwarding cannot cover, so
+  // it is binned apart from an ALU-producer RAW: only the load case proves the
+  // stall path ran.
   bit          prev_is_load[3];
 
   bit          pending_branch; // previous retirement was a branch, not yet resolved
@@ -127,9 +65,8 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
 `endif
   endfunction
 
-  // Declare a bin so it appears in the report at 0 even if never hit. An
-  // undeclared bin that is never hit is invisible, and an invisible hole is
-  // the failure mode this whole class exists to prevent.
+  // Declaring a bin makes it print at 0 when never hit; an undeclared hole is
+  // invisible.
   function void declare(string grp, string bin_name);
     hits[bin_name]     = 0;
     group_of[bin_name] = grp;
@@ -204,9 +141,8 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
     declare("branch", "branch.beq");
     declare("branch", "branch.bne");
 
-    // cross: dependency distance against instruction type. This is the single
-    // most informative group in the report -- "did we ever get a distance-1
-    // hazard feeding a store address?" is answered here and nowhere else.
+    // cross: dependency distance against instruction type -- e.g. "did a
+    // distance-1 hazard ever feed a store address?"
     foreach (ops[i])
       foreach (dists[d])
         declare("x_op_rs1", $sformatf("x_op_rs1.%s_%s", ops[i], dists[d]));
@@ -264,9 +200,8 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
   endfunction
 
   // Which ALU operation the instruction decodes to. bit30 splits ADD/SUB and
-  // the two right shifts; every other funct3 requires it clear. Separate
-  // returns rather than a ternary over bin names -- see the NUL-padding note
-  // in write().
+  // the two right shifts. Separate returns, not a ternary over bin names --
+  // see the NUL-padding note in write().
   function string alu_name(bit [6:0] op, bit [2:0] f3, bit bit30);
     if (op == OP_RTYPE)
       case (f3)
@@ -319,9 +254,8 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
     bit [4:0] rs1, rs2;
     string    op_s, alu_s, mem_s;
 
-    // Past the sentinel the core is fetching unwritten memory. Those
-    // retirements are not stimulus anyone chose, and counting them would
-    // inflate coverage with noise. Same guard, same reason, as the scoreboard.
+    // Past the sentinel the core fetches unwritten memory; counting those
+    // would inflate coverage with noise. Same guard as the scoreboard.
     if (finished) return;
 
     opcode = t.instr[6:0];
@@ -370,11 +304,9 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
       d = 0;
       if (rs1_dist != 0) d = rs1_dist;
       if (rs2_dist != 0 && (d == 0 || rs2_dist < d)) d = rs2_dist;
-      // NOT a ternary over the two names. `"load_use" : "alu_raw"` are packed
-      // byte arrays, not strings: the conditional operator sizes both operands
-      // to the wider one, so "alu_raw" acquires a leading NUL and the bin name
-      // silently stops matching. That bug shipped once here and made alu_raw
-      // look unreachable across 30 seeds while it was firing constantly.
+      // Not a ternary over the two names: string literals are packed byte
+      // arrays, and the conditional operator widens both operands to match,
+      // so "alu_raw" would gain a leading NUL and stop matching its bin.
       if (d != 0) begin
         if (prev_is_load[d-1]) hit($sformatf("hazard.load_use_%s", dist_name(d)));
         else                   hit($sformatf("hazard.alu_raw_%s",  dist_name(d)));
@@ -409,10 +341,9 @@ class rv32i_coverage extends uvm_subscriber #(rv32i_retire_txn);
       hit((funct3 == 3'b000) ? "branch.beq" : "branch.bne");
     end
 
-    // Shift the destination history. Instructions that write nothing (and
-    // writes to x0) push a 0, which dep_dist() never matches -- so a
-    // non-writing instruction correctly breaks a dependency chain rather than
-    // being skipped over.
+    // Shift the destination history. Non-writing instructions (and x0 writes)
+    // push 0, which dep_dist() never matches, so they break a dependency chain
+    // rather than being skipped over.
     prev_rd[2] = prev_rd[1];
     prev_rd[1] = prev_rd[0];
     prev_rd[0] = (t.regwrite && t.rd != 5'd0) ? t.rd : 5'd0;

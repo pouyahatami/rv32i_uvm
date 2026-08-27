@@ -2,19 +2,13 @@
 // Scoreboard: lockstep-checks every real retirement against the Spike
 // reference trace, read from stream_trace.txt at build time.
 //
-// Four checks per retirement, each a real bug class for a pipeline:
-//  - control flow: the retiring PC must equal the reference PC for this
-//    retirement index. Catches wrong branch targets and conditions.
-//  - instruction identity: the retiring instruction word must be the one
-//    Spike executed at that point.
-//  - register value: if the instruction wrote a register, the value must
-//    match. Skipped for rd==x0
-//  - store: if the instruction wrote memory, the address and the
-//    architecturally-stored bits must match.
+// Four checks per retirement: the PC, the instruction word, the register
+// writeback (skipped for rd==x0), and the store address and architecturally
+// stored bits.
 //
-// The trace is indexed by retirement count, so a single dropped
-// retirement would put every later comparison out of step.
-// Divergence in PC or instruction is therefore treated as terminal.
+// The trace is indexed by retirement count, so one dropped retirement puts
+// every later comparison out of step. Divergence in PC or instruction is
+// therefore terminal.
 // ===========================================================================
 class rv32i_scoreboard extends uvm_scoreboard;
   `uvm_component_utils(rv32i_scoreboard)
@@ -93,9 +87,8 @@ class rv32i_scoreboard extends uvm_scoreboard;
                   trace_file))
     end 
 
-    // Spike Columns: pc instr rd wdata regwrite store_valid store_addr store_data.
-    // Blank lines and lines whose first token is // are ignored
-    // Every other line must contain all eight fields
+    // Columns: pc instr rd wdata regwrite store_valid store_addr store_data.
+    // Blank and // lines are skipped; every other line must have all eight.
     while ($fgets(line, fd) != 0) begin
       line_number++;
 
