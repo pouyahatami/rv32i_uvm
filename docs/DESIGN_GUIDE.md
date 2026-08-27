@@ -66,6 +66,38 @@ rather than nested inside it. `datapath.sv` takes control and hazard signals as
 inputs and computes neither. `hazard_unit.sv` is the file to read first if you
 want to understand where the complexity actually lives.
 
+### Reset
+
+Every resetting sequential block uses `always_ff @(posedge clk, posedge reset)`
+— an asynchronous reset. That is deliberate. A synchronous reset is data on the
+D pin, so it needs a running clock to land; at power-up, during a PLL relock, or
+in a clock-gated state there may not be one, and a design whose reset depends on
+a clock that is not running has no guaranteed initial state.
+
+The hazard is asynchronous *de*assertion, not assertion. Reset release is one
+event seen by thousands of flops with different clock-tree delays. If it lands
+near a clock edge, some flops see a final reset cycle and some do not — a
+recovery/removal violation. Part of the design leaves reset a cycle late, or a
+flop goes metastable. It is intermittent, temperature-dependent, and invisible
+in RTL simulation, where release is a clean zero-delay event.
+
+`reset_sync.sv` keeps the asynchronous assert and makes the deassert
+synchronous: a shift register held at all-ones while `arst_in` is high, walking
+a zero through on successive edges. The output asserts the instant `arst_in`
+does and releases `Stages` edges after it falls, by which point release is a
+synchronous event every downstream flop samples identically. The intermediate
+stages also give metastability from the asynchronous edge time to settle, which
+is why two stages is the minimum and why they must not be merged — hence the
+`ASYNC_REG`/`PRESERVE`/`DONT_TOUCH` attributes.
+
+One synchronizer at the top is sufficient because this core has a single clock
+domain. A multi-clock design needs one per domain, clocked by that domain's
+clock; a reset synchronized to the wrong clock is no better than an
+unsynchronized one.
+
+Known inconsistency: `debug_fsm.sv` resets synchronously, on `always_ff @(posedge
+clk)`. It is the only block that does, and it should be brought in line.
+
 ## 3. The pipeline
 
 IF → ID → EX → MEM → WB, with a pipeline register between each stage.

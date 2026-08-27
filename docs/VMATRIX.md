@@ -70,7 +70,28 @@ How to read the columns:
    nothing random and only incidentally by directed programs.
 5. **No riscv-arch-test run.** "Verified against Spike on generated
    streams" is the accurate claim; "compliant" is not.
-6. **`alu.srai` is the generator's thinnest bin.** The I-type arm draws
+6. **The forwarding-mux selects are not covered.** Everything the coverage
+   collector samples comes from `retire_if`, so it measures *architectural*
+   traffic. `ForwardAE`/`ForwardBE` are internal to `hazard_unit.sv` and
+   invisible at that boundary. The `rs1_dist`/`rs2_dist` bins cover the
+   stimulus condition that drives forwarding — a RAW dependency at distance
+   1/2/3 — which is what the generator controls, but that is not the same
+   claim as "the forwarding paths activated". Closing it needs a second
+   collector bound into `hazard_unit`.
+
+   Related: dependency distance is measured in **retirements, not cycles**.
+   Under a stall the pipeline distance differs from the retirement distance.
+   Read those bins as "did we ask for the hard cases", not "did the hard
+   paths run".
+7. **The covergroups have never been executed.** `rv32i_coverage.svh` holds
+   two expressions of one model: a plain-SystemVerilog bin tally that always
+   runs and produces every number this project reports, and `covergroup`
+   blocks behind `` `ifdef RV32I_COVERAGE `` for a simulator with the
+   licence Questa FSE withholds. The two are not bin-for-bin identical — the
+   tally has hazard-kind bins the covergroups lack, and `cg_branch` has a
+   kind-by-outcome cross the tally lacks. Treat the covergroups as untested
+   until something runs them.
+8. **`alu.srai` is the generator's thinnest bin.** The I-type arm draws
    `funct3` uniformly from eight values and SRAI is half of one of them, so a
    40-instruction program emits it about once every two programs, and a
    forward jump often skips it. Ten seeds left it as the single union hole;
