@@ -1,34 +1,15 @@
 // =============================================================================
 // csr_file.sv
 //
-// Minimal M-mode-only CSR file: mstatus (MIE/MPIE bits only), mie (MTIE
-// only), mip (MTIP mirror, read-only, driven by the CLINT's timer
-// compare), mtvec (direct mode only -- the [1:0] mode field is stored
-// but ignored on redirect, always treated as direct), mepc, mcause,
-// mtval, mscratch, mhartid (hardwired 0).
+// Minimal M-mode CSR file: mstatus (MIE/MPIE), mie (MTIE), mip (MTIP mirror,
+// read-only), mtvec (direct mode only), mepc, mcause, mtval, mscratch,
+// mhartid (hardwired 0).
 //
-// Timing (this is the part worth reading carefully): every write here
-// commits at EX-stage timing -- one stage EARLIER than dmem, which
-// commits from the registered MEM-stage signals. That's deliberate, not
-// an oversight: since only one instruction occupies EX per cycle in this
-// in-order pipeline, and CSR writes are called by the instruction
-// currently IN EX (not a value pipelined forward), committing at EX
-// preserves program order with no WAW risk. It also means the caller
-// (datapath.sv) is responsible for suppressing csr_we/trap_en/mret_en
-// on a cycle where EnterDebug is ALSO asserted, exactly the way MemWriteM
-// gets zeroed by FlushM on a debug-preempted store -- see datapath.sv's
-// EX-stage trap block for where that gating happens. Without it, a CSR
-// write or trap-entry state change could commit the instant before
-// debug halts the core, even though the pipeline's own bookkeeping
-// treats that instruction as "squashed, will re-execute after resume."
+// Writes commit at EX-stage timing, one stage ahead of dmem. Callers must
+// therefore gate csr_we/trap_en/mret_en with ~EnterDebug themselves;
+// datapath.sv does this. Write priority is trap entry > mret > csr_we.
 //
-// Write priority when multiple conditions are (in principle) live the
-// same cycle: trap entry > mret > plain CSR-instruction write. In
-// practice trap_en/mret_en/csr_we are mutually exclusive per-instruction
-// except for the one genuine corner case -- a timer interrupt landing
-// exactly on a cycle where EX holds an MRET or a CSR-writing instruction
-// -- where trap entry wins and the preempted instruction re-executes
-// cleanly after the handler's own mret (precise-interrupt semantics).
+// docs/DESIGN_GUIDE.md section 5 covers the timing and the trap rules.
 // =============================================================================
 
 import rv32i_pkg::*;
@@ -37,27 +18,22 @@ module csr_file (
     input  logic        clk,
     input  logic        reset,
 
-    // CSR instruction read/write -- committed at EX-stage timing (see above)
     input  logic [11:0] csr_addr,
     input  logic        csr_we,
     input  logic [31:0] csr_wdata,
     output logic [31:0] csr_rdata,
 
-    // trap entry (synchronous exception OR interrupt), already gated by
-    // the caller to exclude EnterDebug
+    // trap entry (exception or interrupt); gated by the caller
     input  logic         trap_en,
     input  logic         trap_is_int,
     input  logic [4:0]   trap_cause,
     input  logic [31:0]  trap_pc,
     input  logic [31:0]  trap_val,
 
-    // mret, already gated by the caller to exclude EnterDebug
     input  logic         mret_en,
 
-    // external timer-pending mirror, from clint.sv
-    input  logic         mtip_i,
+    input  logic         mtip_i,      // timer-pending mirror, from clint.sv
 
-    // consumed by datapath.sv's EX-stage trap/PC-redirect logic
     output logic [31:0]  mtvec_o,
     output logic [31:0]  mepc_o,
     output logic         mstatus_mie_o,
@@ -73,12 +49,7 @@ module csr_file (
   assign mstatus_mie_o  = mstatus_mie;
   assign mie_mtie_o     = mie_mtie;
 
-  // ---- read port (combinational; reflects state as of the last edge) ----
-  // unique case: csr_addr is a full 12-bit field, so it is not exhaustively
-  // enumerable the way a 2- or 3-bit selector is -- `unique` here asserts
-  // "at most one of the named addresses matches," which is trivially true
-  // since they're all distinct constants; the default covers every
-  // unimplemented CSR address.
+  // ---- read port ----
   always_comb
     unique case (csr_addr)
       CSR_MSTATUS:

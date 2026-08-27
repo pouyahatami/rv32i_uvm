@@ -1,49 +1,12 @@
 // =============================================================================
 // hazard_unit.sv
 //
-// Hazard-detection unit for the 5-stage RV32I pipeline. Purely
-// combinational: computes EX-stage operand forwarding, the load-use stall,
-// and every pipeline-register flush condition from state exposed by
-// datapath.sv and debug_fsm.sv. Instantiated alongside those modules (not
-// nested inside them) in riscv_pipe.sv, which wires its outputs back into
-// datapath.sv's forwarding muxes and pipeline-register load conditions.
+// Combinational hazard resolution for the 5-stage pipeline: EX-stage operand
+// forwarding, the load-use interlock, and the pipeline-register flushes.
+// Instantiated in riscv_pipe.sv alongside datapath.sv, which consumes these
+// outputs at its forwarding muxes and pipeline-register load conditions.
 //
-// ---- Forwarding ----
-// SelectAE/SelectBE steer the EX-stage ALU operands away from a stale
-// register-file read toward the MEM- or WB-stage result when an in-flight
-// producer matches. MEM is checked before WB in priority so that three
-// back-to-back dependent instructions correctly forward from the more
-// recent producer. The FWD_MEM/FWD_WB encoding must match rv32i_pkg.sv and
-// the forwardamux/forwardbmux port order in datapath.sv.
-//
-// ---- Load-use stall ----
-// lwStallD detects a load in EX whose destination register is read by the
-// D-stage instruction -- a hazard forwarding cannot cover, since the loaded
-// value does not exist until MEM. Detection is gated by Rs1UsedD/Rs2UsedD
-// (from controller.sv) so that JAL/LUI/AUIPC and the *I-immediate CSR ops,
-// which reuse the rs1/rs2 bit positions as immediate bits, cannot trigger a
-// spurious stall.
-//
-// ---- Flushes ----
-// FlushD  (IF/ID  -> NOP)   : PCSrcE | JumpD | EnterDebug | ExitDebug | trap_en | mret_enE
-// FlushE  (ID/EX  -> bubble): PCSrcE | lwStallD | EnterDebug | ExitDebug | trap_en | mret_enE
-// FlushM  (EX/MEM -> bubble): EnterDebug | trap_en
-//
-// FlushD/FlushE fire on every event that redirects the PC away from
-// sequential fetch: a taken branch/jalr (PCSrcE), a jal resolved in ID
-// (JumpD), debug-mode entry or exit (EnterDebug/ExitDebug), a trap
-// (trap_en), or an mret (mret_enE). In each case, whatever was fetched
-// under the sequential-PC assumption is now wrong-path relative to the new
-// target and must be squashed before it can retire.
-//
-// FlushM fires only on EnterDebug or trap_en, the two cases where the
-// EX-stage instruction itself must be prevented from committing its own
-// RegWrite/MemWrite: a trapping instruction because it excepted or is being
-// interrupted, a halting instruction because dpc = PCE means it re-executes
-// for real after resume. mret and dret are pure control transfers with no
-// state write of their own to suppress, so they are deliberately excluded
-// from FlushM. See docs/BUGS.md for the verification
-// history behind this flush set.
+// docs/DESIGN_GUIDE.md section 4 derives each condition.
 // =============================================================================
 
 import rv32i_pkg::*;
@@ -80,7 +43,8 @@ module hazard_unit (
 
   logic lwStallD;
 
-  // ---- forwarding ----
+  // FWD_* encoding must match the mux3 port order in datapath.sv.
+  // MEM is tested before WB so the nearer producer wins.
   always_comb begin
     if      (RegWriteM && (RdM != 0) && (RdM == Rs1E)) SelectAE = FWD_MEM;
     else if (RegWriteW && (RdW != 0) && (RdW == Rs1E)) SelectAE = FWD_WB;
@@ -91,13 +55,15 @@ module hazard_unit (
     else                                                 SelectBE = FWD_NONE;
   end
 
-  // ---- load-use stall ----
+  // Rs*UsedD gates the compare: U/J-type and the CSR-immediate ops reuse the
+  // rs1/rs2 bit positions as immediate bits.
   assign lwStallD = IsLoadE && (RdE != 0) &&
                     ((Rs1UsedD && (RdE == Rs1D)) || (Rs2UsedD && (RdE == Rs2D)));
   assign StallF   = lwStallD;
   assign StallD   = lwStallD;
 
-  // ---- flushes ----
+  // FlushM suppresses the EX-stage instruction's own RegWrite/MemWrite.
+  // mret and dret are excluded: neither has architectural state to suppress.
   assign FlushD = PCSrcE | JumpD | EnterDebug | ExitDebug | trap_en | mret_enE;
   assign FlushE = PCSrcE | lwStallD | EnterDebug | ExitDebug | trap_en | mret_enE;
   assign FlushM = EnterDebug | trap_en;

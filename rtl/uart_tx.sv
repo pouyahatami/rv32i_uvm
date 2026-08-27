@@ -1,16 +1,13 @@
 // =============================================================================
 // uart_tx.sv
 //
-// Deliberately-simplified, TX-only, memory-mapped UART: no baud-rate
-// timing is modeled (real UART bit-serialization is out of scope for
-// this project). A write to UART_TXDATA (rv32i_pkg::UART_BASE+0x0) is
-// treated as an instantly-transmitted byte -- tx_valid_o pulses for one
-// cycle with tx_byte_o holding the value, for a testbench monitor to
-// capture. UART_STATUS (+0x4) is read-only and always reports
-// TX_READY=1 (bit 0), consistent with the instant-transmit model -- a
-// real driver polling this status register before every write would
-// work identically against real hardware that actually takes cycles to
-// drain, since it degrades gracefully to "always immediately ready."
+// TX-only memory-mapped UART with no baud-rate timing: a write to UART_TXDATA
+// (rv32i_pkg::UART_BASE+0x0) pulses tx_valid_o for one cycle with the byte on
+// tx_byte_o, for a testbench monitor to capture.
+//
+// UART_STATUS (+0x4) is read-only and always reports TX_READY=1. A driver
+// that polls it before every write still works against real hardware that
+// takes cycles to drain.
 // =============================================================================
 
 module uart_tx (
@@ -40,9 +37,6 @@ module uart_tx (
 
   assign tx_byte_o = last_byte_r;
 
-  // unique case: addr[3:0] is only ever range-checked into the UART window
-  // by mem_bus.sv, but only two of its sixteen possible nibble values are
-  // real registers -- default covers the rest.
   always_comb
     unique case (addr[3:0])
       4'h0:

@@ -16,8 +16,7 @@ module dmem #(
     input  logic [31:0] a,
     input  logic [31:0] wd,
     input  logic [2:0]  funct3,   // 000 SB/LB, 001 SH/LH, 010 SW/LW,
-                                   // 100 LBU, 101 LHU (store side only
-                                   // distinguishes byte/half/word)
+                                   // 100 LBU, 101 LHU
     output logic [31:0] rd
 );
 
@@ -41,9 +40,6 @@ module dmem #(
       ? {mem[{addr[AddrWidth-1:2], 2'b11}], mem[{addr[AddrWidth-1:2], 2'b10}]}
       : {mem[{addr[AddrWidth-1:2], 2'b01}], mem[{addr[AddrWidth-1:2], 2'b00}]};
 
-  // unique case: funct3 enumerates the 5 legal load widths (LB/LH/LW/LBU/
-  // LHU); the remaining 3 encodings of a 3-bit field are structurally
-  // unreachable here (they're store-only or unused), covered defensively.
   always_comb
     unique case (funct3)
       3'b000: // LB (sign-extend)
@@ -60,7 +56,6 @@ module dmem #(
         rd = word_read;
     endcase
 
-  // unique case: funct3 enumerates the 3 legal store widths (SB/SH/SW);
   always_ff @(posedge clk)
     if (we)
       unique case (funct3)
@@ -76,9 +71,8 @@ module dmem #(
           mem[{addr[AddrWidth-1:2], 2'b10}] <= wd[23:16];
           mem[{addr[AddrWidth-1:2], 2'b11}] <= wd[31:24];
         end
-        default: begin // funct3 011/100/101/110/111 are not valid store widths --
-                        // no real encoding reaches here; fall back to a full-word
-                        // write rather than silently dropping the store.
+        default: begin // not a valid store width; write a full word rather
+                        // than silently dropping the store
           mem[{addr[AddrWidth-1:2], 2'b00}] <= wd[7:0];
           mem[{addr[AddrWidth-1:2], 2'b01}] <= wd[15:8];
           mem[{addr[AddrWidth-1:2], 2'b10}] <= wd[23:16];

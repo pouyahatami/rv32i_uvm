@@ -36,10 +36,7 @@ module debug_fsm (
 
   state_e state;
 
-  // Internal only. Identical to debug_halted_o -- state holds StRunning (2'b00)
-  // or StParked (2'b11) and nothing else, so both bits always agree -- but the
-  // enter/exit conditions below read more clearly against a mode name.
-  logic   debug_mode;
+  logic   debug_mode;   // identical to debug_halted_o; named for readability
 
   assign enter_debug = (debug_req_i | is_ebreak) && !debug_mode;
   assign exit_debug  = is_dret && debug_mode;
@@ -65,8 +62,7 @@ module debug_fsm (
           else
             state <= StParked;
         end
-        default: // state is 2 bits but only ever holds StRunning/StParked --
-                 // 2'b01/2'b10 are unreachable; recover to StRunning defensively
+        default: // 2'b01/2'b10 unreachable; recover defensively
           state <= StRunning;
       endcase
     end

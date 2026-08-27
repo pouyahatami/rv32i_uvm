@@ -96,13 +96,10 @@ package rv32i_pkg;
     logic       is_illegal;
   } id_ex_ctrl_t;
 
-  // Written as a plain concatenation rather than a named assignment pattern
-  // ('{RegWrite: 1'b0, ...}), which Icarus Verilog 12 cannot parse -- and
-  // Icarus is one of the two simulators this core is regressed under. Fields
-  // MUST stay in the same order as the typedef above, first field = MSB. If a
-  // field is ever added to id_ex_ctrl_t and not added here, the width no
-  // longer matches and every tool errors out, which is the failure mode you
-  // want.
+  // Plain concatenation, not a named assignment pattern: Icarus 12 cannot
+  // parse the latter. Field order must match the typedef, first field = MSB;
+  // a field added to one and not the other is a width mismatch, which every
+  // tool rejects.
   parameter id_ex_ctrl_t ID_EX_CTRL_BUBBLE = {
     1'b0,      // RegWrite
     1'b0,      // MemWrite

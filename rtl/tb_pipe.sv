@@ -1,63 +1,27 @@
 // =============================================================================
 // tb_pipe.sv
 //
-// Three independent self-checking testbenches in this file -- compile
-// once, select which one to run with iverilog's -s flag (all three are
-// valid simulation roots, so the tool needs to be told which):
+// Three self-checking testbenches, all valid simulation roots -- select one
+// with iverilog's -s flag or Verilator's --top-module:
 //
-//   tb_pipe_hazard : runs riscvtest_pipe.txt (forwarding, load-use
-//     stall, store-data forwarding, branch/jal flush, x0-as-forward-
-//     source) to completion, diffs all 32 registers + 2 dmem words
-//     against golden_vals_pipe.svh. Architectural end-state must match
-//     regardless of the pipeline's internal timing, which is the level
-//     every directed test here compares at.
+//   tb_pipe_hazard : forwarding, load-use stall, store-data forwarding,
+//     branch/jal flush, x0 as a forward source. Diffs all 32 registers and
+//     2 dmem words against golden_vals_pipe.svh.
 //
-//   tb_pipe_debug : runs riscvtest_pipe_debug.txt (a 2-instruction
-//     increment loop) and a "debug ROM" dret stub at 0x0C. Asserts
-//     debug_req_i mid-loop, confirms debug_halted_o and
-//     PC == dm_halt_addr_i, lets the dret resume, confirms forward
-//     progress. See hazard_unit.sv's header comment for why the resume
-//     point is dpc = PCE specifically.
+//   tb_pipe_debug : asserts debug_req_i mid-loop, checks debug_halted_o and
+//     PC == dm_halt_addr_i, then confirms forward progress after dret.
 //
-//   tb_pipe_csr : runs riscvtest_pipe_csr.hex (program_csr.py) -- CSR
-//     read/write semantics, an ecall trap, an illegal-instruction trap,
-//     a misaligned-load trap, a misaligned-store trap, UART TX writes,
-//     and a machine-timer interrupt, in that order -- to completion,
-//     diffs all 32 registers against golden_vals_pipe_csr.svh, and
-//     independently monitors top.sv's uart_tx_byte_o/uart_tx_valid_o to
-//     check the transmitted byte stream directly.
+//   tb_pipe_csr : CSR read/write, ecall, illegal-instruction, misaligned
+//     load and store traps, UART TX, and a timer interrupt. Diffs all 32
+//     registers against golden_vals_pipe_csr.svh and independently checks
+//     the transmitted UART byte stream.
 //
-// The golden .svh files are generated from Spike by verif/spike/regen.sh
-// and are checked in, so running these needs no ISS. See
-// verif/spike/README.md.
+// All three compare architectural end state, not cycle timing. The golden
+// .svh files come from verif/spike/regen.sh and are checked in, so running
+// these needs no ISS.
 //
-// Prefer ./run_sim.sh, which runs all three under both simulators. The
-// explicit command lines below are what it does. Every testbench needs the
-// full file list including csr_file/clint/uart_tx/mem_bus, because mem_bus.sv
-// sits between top.sv and dmem.sv unconditionally -- even tb_pipe_hazard and
-// tb_pipe_debug, which never touch a CSR:
-//   iverilog -g2012 -o sim_hazard -s tb_pipe_hazard rv32i_pkg.sv cells.sv \
-//       regfile.sv alu.sv extend.sv retire_if.sv controller.sv \
-//       hazard_unit.sv csr_file.sv datapath.sv debug_fsm.sv riscv_pipe.sv \
-//       dmem.sv clint.sv uart_tx.sv mem_bus.sv imem.sv top.sv tb_pipe.sv
-//   vvp sim_hazard
-//
-//   iverilog -g2012 -o sim_debug -s tb_pipe_debug rv32i_pkg.sv cells.sv \
-//       regfile.sv alu.sv extend.sv retire_if.sv controller.sv \
-//       hazard_unit.sv csr_file.sv datapath.sv debug_fsm.sv riscv_pipe.sv \
-//       dmem.sv clint.sv uart_tx.sv mem_bus.sv imem.sv top.sv tb_pipe.sv
-//   vvp sim_debug
-//
-//   iverilog -g2012 -o sim_csr -s tb_pipe_csr rv32i_pkg.sv cells.sv \
-//       regfile.sv alu.sv extend.sv retire_if.sv controller.sv \
-//       hazard_unit.sv csr_file.sv datapath.sv debug_fsm.sv riscv_pipe.sv \
-//       dmem.sv clint.sv uart_tx.sv mem_bus.sv imem.sv top.sv tb_pipe.sv
-//   vvp sim_csr
-//
-// Waveforms: add `-DDUMP_VCD` to any of the iverilog compile lines above to
-// make that testbench write build/wave_{hazard,debug,csr}.vcd, openable in
-// GTKWave. Off by default so the everyday pass/fail regression (run_sim.sh)
-// doesn't pay the dump-file cost.
+// Prefer ./run_sim.sh, which runs all three under both simulators. Add
+// -DDUMP_VCD for build/wave_*.vcd.
 // =============================================================================
 
 module tb_pipe_hazard;
@@ -84,25 +48,15 @@ module tb_pipe_hazard;
 `endif
 
   // ---- power-on architectural state ----
-  // The register file is a RAM with no reset, which is correct hardware: the
-  // RISC-V spec does not define reset values for x1-x31, and real cores do
-  // not spend 31 registers' worth of reset logic on it. The consequence for
-  // verification is that a 4-state simulator (Icarus) reads every
-  // never-written register as X, while a 2-state one (Verilator) reads 0 --
-  // so the two disagree on exactly the registers this test expects to still
-  // be 0, and neither answer means anything on its own.
-  //
-  // The ISS golden model starts from all-zero, so the DUT is forced to that
-  // same known architectural start state here. This is a testbench concern,
-  // not an RTL one -- putting a reset in regfile.sv would be inventing
-  // hardware to satisfy a simulator.
+  // The register file has no reset, which is correct hardware -- the spec
+  // defines no reset values for x1-x31. Icarus then reads never-written
+  // registers as X and Verilator reads 0. Spike starts from all-zero, so the
+  // DUT is forced to the same known state here rather than in the RTL.
   initial
     for (int i = 0; i < 32; i++) dut.rvpipe.dp.rf.rf[i] = 32'h0;
 
-  // Timeout watchdog. This was originally a fork/join_any whose second branch
-  // did `disable timeout` -- Verilator does not support disabling a named
-  // block from a sibling fork branch, so it's an independent initial block
-  // instead. Same behaviour, and portable across Icarus/Verilator/Riviera.
+  // Timeout watchdog. An independent initial block rather than a fork/join_any
+  // with `disable`, which Verilator does not support.
   bit halt_seen = 0;
   initial begin : watchdog
     repeat (200) @(posedge clk);
@@ -126,10 +80,8 @@ module tb_pipe_hazard;
     halt_seen = 1;
 
     @(posedge clk);
-    #1;  // Let this edge's nonblocking register-file write settle before
-         // sampling. The last instruction before EBREAK commits on exactly
-         // this edge, so reading rf[] in the active region here would miss
-         // it -- which is what made x22 read 0 the first time this ran.
+    #1;  // Let this edge's nonblocking regfile write settle: the last
+         // instruction before EBREAK commits on exactly this edge.
 
     begin
       int errors = 0;
@@ -231,18 +183,11 @@ module tb_pipe_debug;
     halt_seen = 1;
     debug_req_i = 0;
 
-    // Check PC immediately, same simulation step as the halt edge --
-    // NOT a cycle later. This debug ROM is a bare `dret` at 0x0C (same
-    // minimal convention as the original, unmodified tutorial test
-    // program), not a real parking loop the debugger explicitly breaks
-    // out of, so the halted window is only a few pipeline-depths wide
-    // before it auto-resumes. That means there's no robust window to
-    // also assert "x1 frozen while halted" without risking a race
-    // against auto-resume -- a real Debug Module would hold haltreq
-    // asserted and keep the core in a genuine parking loop, which WOULD
-    // make that check safe to add. Flagging this rather than writing an
-    // assertion whose pass/fail depends on exact cycle counts I can't
-    // verify without a simulator.
+    // Same simulation step as the halt edge, not a cycle later: the debug ROM
+    // is a bare dret at 0x0C, so the halted window is only a few cycles wide
+    // before it auto-resumes. That window is too narrow to also assert "x1
+    // frozen while halted" without racing the resume -- a real Debug Module
+    // would hold haltreq and make that check safe to add.
     if (dut.rvpipe.PC !== dm_halt_addr_i) begin
       $display("FAIL: PC = %h after halt, expected dm_halt_addr_i = %h", dut.rvpipe.PC, dm_halt_addr_i);
       errors++;
@@ -276,23 +221,12 @@ endmodule
 
 module tb_pipe_csr;
   // ===========================================================================
-  // tb_pipe_csr
-  //
-  // Runs riscvtest_pipe_csr.hex (program_csr.py) -- the CSR/trap/
-  // interrupt/UART directed test -- to completion and diffs all 32
-  // registers against golden_vals_pipe_csr.svh, generated from Spike.
-  //
-  // Final architectural state only, not cycle-by-cycle timing, and that
-  // matters most for the interrupt: clint.sv increments mtime once per
-  // clock, while Spike has no clock and its CLINT model increments once
-  // per retired instruction. The two therefore reach any given mtime after
-  // different amounts of program progress, so "the interrupt fired on
-  // cycle N" is not a comparable claim. Where the handler leaves the
-  // machine is. See verif/spike/rvproj_devices.cc.
-  //
-  // Also independently monitors top.sv's uart_tx_byte_o/uart_tx_valid_o
-  // pulses and checks the transmitted byte sequence directly -- a second,
-  // more direct check than relying solely on x26's readback value.
+  // End-state comparison only, which matters most for the timer interrupt:
+  // clint.sv increments mtime once per clock, while Spike's CLINT model
+  // increments once per retired instruction. The two reach a given mtime after
+  // different amounts of program progress, so "the interrupt fired on cycle N"
+  // is not a comparable claim; where the handler leaves the machine is.
+  // See verif/spike/rvproj_devices.cc.
   // ===========================================================================
   logic clk = 0, reset;
   logic [31:0] dm_halt_addr_i = 32'h0;

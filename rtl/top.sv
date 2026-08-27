@@ -1,17 +1,16 @@
 // =============================================================================
 // top.sv
 //
-// Top-level wrapper: the core (riscv_pipe.sv), instruction memory
-// (imem.sv), and the data-side bus (mem_bus.sv, which owns dmem.sv,
-// clint.sv and uart_tx.sv).
+// Top-level wrapper: the core (riscv_pipe.sv), instruction memory (imem.sv),
+// and the data-side bus (mem_bus.sv, which owns dmem.sv, clint.sv and
+// uart_tx.sv). mtip closes the timer-interrupt loop from the CLINT back into
+// the core.
 //
-// mtip comes out of mem_bus.sv's CLINT and goes back into riscv_pipe.sv,
-// closing the timer-interrupt loop. uart_tx_byte_o/uart_tx_valid_o are
-// exposed only so a testbench can observe transmitted bytes; nothing in the
-// core reads them back (see tb_pipe_csr in tb_pipe.sv).
+// uart_tx_byte_o/uart_tx_valid_o exist only for testbench observation; the
+// core never reads them back.
 //
-// This is the module both the directed testbenches and the UVM environment
-// instantiate, unmodified and with the same port list.
+// This is the DUT: both the directed testbenches and the UVM environment
+// instantiate it unmodified.
 // =============================================================================
 
 module top #(
@@ -34,12 +33,8 @@ module top #(
   logic [2:0]  MemFunct3;
   logic        mtip;
 
-  // `reset` arrives here as a raw asynchronous input -- a pad, a board button,
-  // or a testbench assignment -- with no defined relationship to clk. It is
-  // synchronized once, here, and nothing downstream ever sees the raw signal:
-  // every module below consumes `rst`, which asserts asynchronously and
-  // releases on a clock edge. See reset_sync.sv for why deassertion is the
-  // half that matters.
+  // `reset` is a raw asynchronous input. Synchronized once here; everything
+  // below consumes `rst`, which releases on a clock edge.
   logic rst;
   reset_sync #(.Stages(2)) u_reset_sync (
       .clk(clk), .arst_in(reset), .rst_out(rst));

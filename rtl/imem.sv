@@ -5,9 +5,8 @@
 // start via $readmemh. MemWords defaults to 4096 (16KB), matching dmem.sv's
 // default RAM size.
 //
-// The UVM environment writes this array directly through a bound interface
-// rather than via $readmemh; see verif/uvm/imem_backdoor_bind.sv. Nothing in
-// this file knows about that, which is the point of using `bind`.
+// The UVM environment writes this array through a bound interface rather than
+// $readmemh; see verif/uvm/imem_backdoor_bind.sv.
 // =============================================================================
 
 module imem #(

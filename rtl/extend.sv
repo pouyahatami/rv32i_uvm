@@ -19,9 +19,6 @@ module extend (
     output logic [31:0] immext
 );
 
-  // unique case: controller.sv only ever emits 000-100 (see maindec); the
-  // default is defensive only. A defined fallback (32'b0), not 32'bx --
-  // see alu.sv's identical note.
   always_comb
     unique case (immsrc)
       3'b000: // I-type

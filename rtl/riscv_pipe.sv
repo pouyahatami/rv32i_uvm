@@ -1,21 +1,17 @@
 // =============================================================================
 // riscv_pipe.sv
 //
-// The pipelined core. This file is structural: it declares the wires between
-// the four blocks and instantiates them. All behaviour lives in
+// The pipelined core. Structural only: wires between the four behavioural
+// blocks, plus retire_if.sv, the verification commit tap.
 //
 //   controller.sv   D-stage decode, producing the id_ex_ctrl_t bundle
 //   hazard_unit.sv  forwarding selects, stalls, and the three flushes
 //   datapath.sv     the pipeline itself, plus regfile.sv and csr_file.sv
 //   debug_fsm.sv    external-debug halt/resume
 //
-// and it also instantiates retire_if.sv, the verification-side commit tap.
-//
-// mtip_i is the timer-pending signal from clint.sv, threaded in from top.sv
-// and passed straight to datapath.sv. trap_en and mret_enE flow the other
-// way, datapath.sv -> hazard_unit.sv, so a trap or an mret flushes the
-// pipeline behind it -- the same shape as PCSrcE/JumpD for a mispredicted
-// branch.
+// mtip_i arrives from clint.sv via top.sv. trap_en and mret_enE run the other
+// way, datapath.sv -> hazard_unit.sv, so a trap or mret flushes behind itself
+// the same way PCSrcE does for a taken branch.
 // =============================================================================
 
 import rv32i_pkg::*;
@@ -61,11 +57,8 @@ module riscv_pipe (
   logic       IsLoadE, RegWriteM, RegWriteW, PCSrcE;
   logic       trap_en, mret_enE;
 
-  // Declared here (ahead of hazard_unit's instantiation below, which
-  // references enter_debug) rather than down by debug_fsm's own
-  // instantiation -- SystemVerilog module scoping makes either position
-  // legal, but slang (unlike Icarus Verilog) requires textual
-  // declare-before-use ordering; same fix as ResultW in datapath.sv.
+  // Declared ahead of hazard_unit rather than beside debug_fsm below: slang
+  // requires textual declare-before-use where Icarus does not.
   logic        enter_debug, exit_debug;
 
   hazard_unit hu(.RegWriteM   (RegWriteM),
@@ -95,7 +88,6 @@ module riscv_pipe (
                  .FlushM      (FlushM));
 
   // ---- debug_fsm, fed EX-stage signals ----
-  // (enter_debug/exit_debug declared above, ahead of hazard_unit)
   logic [31:0] dpc, dcsr;
   logic [31:0] PCE;
   logic        is_ebreakE, is_dretE;

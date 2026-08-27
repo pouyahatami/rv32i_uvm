@@ -4,13 +4,13 @@
 // 5-stage pipelined RV32I datapath: IF -> ID -> EX -> MEM -> WB.
 //
 // Owns regfile.sv, csr_file.sv and all four pipeline registers. Control
-// arrives pre-decoded from controller.sv as an id_ex_ctrl_t bundle; forwarding,
-// stall and flush decisions arrive from hazard_unit.sv. EX does more than run
-// the ALU: it also holds the CSR read-modify-write, exception and interrupt
-// detection, and the trap/mret PC redirect.
+// arrives pre-decoded from controller.sv as an id_ex_ctrl_t bundle;
+// forwarding, stall and flush decisions arrive from hazard_unit.sv. EX also
+// holds the CSR read-modify-write, exception and interrupt detection, and the
+// trap/mret PC redirect.
 //
-// docs/DESIGN_GUIDE.md has the stage-by-stage walk, the trap priority table,
-// and why the validE/validM/validW chain exists.
+// docs/DESIGN_GUIDE.md sections 3-5 have the stage-by-stage walk, the trap
+// priority table, and the validE/validM/validW chain.
 // =============================================================================
 
 import rv32i_pkg::*;
@@ -74,7 +74,7 @@ module datapath (
     output logic [4:0]  RdW_retire,
     output logic [31:0] ResultW_retire,
     output logic        RegWriteW_retire,
-    output logic        ValidW_retire,      // non-bubble retirement; see DESIGN_GUIDE.md
+    output logic        ValidW_retire,      // non-bubble retirement
     output logic        MemWriteW_retire,   // store side of the same retirement
     output logic [31:0] StoreAddrW_retire,
     output logic [31:0] StoreDataW_retire,
@@ -85,10 +85,8 @@ module datapath (
   logic [31:0] PCNextF, PCPlus4F, PCTargetD, PCTargetE;
   logic [31:0] mtvec_w, mepc_w; // from csr_file, declared here so the PC mux can see them
 
-  // Combinational, not clocked: this is the next-PC input to the PCF register
-  // below, not a register itself. Registering it here would insert a bubble on
-  // every redirect. Priority runs highest-first -- debug preempts a trap, a
-  // trap preempts mret, and all three preempt an ordinary branch or jump.
+  // Priority is highest-first: debug preempts a trap, a trap preempts mret,
+  // and all three preempt an ordinary branch or jump.
   always_comb begin
     if      (EnterDebug) PCNextF = dm_halt_addr_i;
     else if (ExitDebug)  PCNextF = dpc;
@@ -126,10 +124,8 @@ module datapath (
   assign RdD = InstrD[11:7];
 
   logic [31:0] RD1D, RD2D, ImmExtD;
-  logic [31:0] ResultW; // declared here (not at its Writeback-stage point of use below) so
-                        // it's visible to regfile's WD3 port and forwardamux/forwardbmux in
-                        // Execute -- SystemVerilog module scoping makes this legal either way,
-                        // but slang (unlike Icarus Verilog) requires declare-before-use.
+  logic [31:0] ResultW; // declared ahead of its Writeback-stage assignment:
+                        // slang requires declare-before-use, Icarus does not
   regfile rf (
       .clk(clk),
       .we3(RegWriteW),
@@ -159,25 +155,15 @@ module datapath (
       RdE <= RdD; Rs1E <= Rs1D; Rs2E <= Rs2D; funct3E <= InstrD[14:12];
       RD1E <= RD1D; RD2E <= RD2D; PCE <= PCD; PCPlus4E <= PCPlus4D; ImmExtE <= ImmExtD;
       InstrE <= InstrD;
-      // NOT an unconditional 1'b1. On the first edge after reset deasserts, the
-      // Decode stage still holds the reset-cleared bubble, not a fetched
-      // instruction -- asserting validE here announced that bubble as a retired
-      // instruction one cycle later at PCW = PCPlus4M - 4 = 0xfffffffc, shifting
-      // every subsequent retirement by one. Found by the UVM environment's
-      // lockstep comparison against Spike (verif/uvm/), which is exactly the
-      // class of bug a commit-log check exists to catch.
+      // validD, not 1'b1: on the first edge after reset deasserts, Decode still
+      // holds the reset-cleared bubble rather than a fetched instruction.
       validE <= validD;
     end
 
   assign is_ebreakE = ctrlE.is_ebreak;
   assign is_dretE   = ctrlE.is_dret;
-  // Explicit equality, not a bit-0 shortcut: RESULT_MEM (2'b01) and RESULT_CSR
-  // (2'b11) both have bit 0 set, so `ctrlE.ResultSrc[0]` would also fire on a
-  // CSR read reaching EX. A CSR read has no load-use-style delay -- csr_file.sv
-  // commits/reads at EX-stage timing, same as an ALU op -- so that would only
-  // have cost hazard_unit.sv an unnecessary stall cycle, not produced a wrong
-  // answer, but it made this signal say something other than what its name
-  // (and hazard_unit.sv's use of it) claims.
+  // Full equality, not ResultSrc[0]: RESULT_CSR also has bit 0 set, and a CSR
+  // read needs no load-use stall.
   assign IsLoadE = (ctrlE.ResultSrc == RESULT_MEM);
 
   // ================= Execute =================
@@ -186,15 +172,8 @@ module datapath (
   logic        ZeroE, LtE, take_branchE;
   logic [31:0] PCTargetBranchE;
 
-  // mux3 selects d0 on s=00, d1 on s=01, d2 on s=10. FWD_WB=01, FWD_MEM=10
-  // (rv32i_pkg.sv), so ResultW is d1 and ALUResultM is d2 -- this ordering
-  // is exactly the thing that was wired backwards in an earlier pass; the
-  // named constants don't prevent that class of mistake by themselves,
-  // but make it easier to grep/verify against hazard_unit.sv's encoding.
-  // d2 is FwdResultM, NOT ALUResultM. See FwdResultM's definition in the MEM
-  // stage below: ALUResultM is only the correct forwarded value for ALU
-  // results, and forwarding it for a CSR read or a JAL/JALR silently delivers
-  // the wrong operand.
+  // Port order is fixed by rv32i_pkg.sv: FWD_WB=01 -> d1, FWD_MEM=10 -> d2.
+  // d2 is FwdResultM, not ALUResultM -- see its definition in the MEM stage.
   mux3 #(32) forwardamux (.d0(RD1E), .d1(ResultW), .d2(FwdResultM), .s(SelectAE), .y(SrcAE_reg));
   mux3 #(32) forwardbmux (.d0(RD2E), .d1(ResultW), .d2(FwdResultM), .s(SelectBE), .y(WriteDataE));
 
@@ -209,8 +188,6 @@ module datapath (
   adder pcaddbranch (.a(PCE), .b(ImmExtE), .y(PCTargetBranchE));
   assign PCTargetE = ctrlE.Jalr ? {ALUResultE[31:1], 1'b0} : PCTargetBranchE;
 
-  // unique case: funct3E enumerates all 6 legal RV32I branch conditions;
-  // the default (untaken) covers the 2 funct3 values BRANCH never uses.
   always_comb
     unique case (funct3E)
       3'b000:
@@ -236,19 +213,11 @@ module datapath (
   logic [31:0] csr_operandE, csr_wdataE;
   logic        mstatus_mieE, mie_mtieE;
 
-  // rs1, forwarded, for CSRRW/S/C; the raw 5-bit field itself (already
-  // sitting in Rs1E) for the *I immediate variants -- Rs1E holds the same
-  // bit positions either way, only the interpretation differs.
+  // Forwarded rs1 for CSRRW/S/C; the raw 5-bit field for the *I variants.
   assign csr_operandE = ctrlE.csr_use_imm ? {27'b0, Rs1E} : SrcAE_reg;
 
-  // A dedicated mux rather than the main ALU: CSRRC needs an
-  // AND-with-inverted-operand that the ALU has no control code for, and adding
-  // one would grow a shared resource to serve a single instruction.
-  //
-  // unique case: ctrlE.csr_op == funct3[1:0], and controller.sv only ever
-  // sets is_csr (which gates whether this mux's output is used at all) for
-  // the three legal RW/RS/RC encodings -- the default covers the 4th,
-  // structurally-unreachable value defensively.
+  // Separate from the main ALU: CSRRC needs an AND-with-inverted-operand the
+  // ALU has no control code for.
   always_comb
     unique case (ctrlE.csr_op)
       2'b01: // CSRRW(I)
@@ -265,21 +234,14 @@ module datapath (
   logic is_load_or_storeE, misalignedE;
   assign is_load_or_storeE = ctrlE.MemWrite | (ctrlE.ResultSrc == RESULT_MEM);
 
-  // unique case: funct3E[1:0] narrows to exactly the 3 load/store width
-  // encodings this ISA defines (byte/half/word); 2'b11 is not a legal
-  // width for any load/store and is unreachable.
   always_comb begin
     misalignedE = 1'b0;
     if (is_load_or_storeE)
       unique case (funct3E[1:0])
-        2'b00: // LB/LBU/SB -- byte ops are always aligned
-          misalignedE = 1'b0;
-        2'b01: // LH/LHU/SH -- must be 2B aligned
-          misalignedE = ALUResultE[0];
-        2'b10: // LW/SW -- must be 4B aligned
-          misalignedE = |ALUResultE[1:0];
-        default: // 2'b11 is not a valid funct3[1:0] for any load/store -- unreachable
-          misalignedE = 1'b0;
+        2'b00:   misalignedE = 1'b0;             // LB/LBU/SB, always aligned
+        2'b01:   misalignedE = ALUResultE[0];    // LH/LHU/SH
+        2'b10:   misalignedE = |ALUResultE[1:0]; // LW/SW
+        default: misalignedE = 1'b0;             // no load/store uses 2'b11
       endcase
   end
 
@@ -308,11 +270,8 @@ module datapath (
 
   logic        trap_is_intE;
   logic [4:0]  trap_causeE;
-  // Explicit three-way (not if/else) so trap_causeE/trap_is_intE never
-  // silently default to "looks like an interrupt" garbage when neither
-  // condition holds -- they're don't-cares in that case (trap_en is 0,
-  // so csr_file.sv never latches them), but writing it this way means a
-  // waveform dump reads correctly instead of misleadingly.
+  // Third arm is don't-care to csr_file.sv (trap_en is 0), but keeps a
+  // waveform dump readable.
   always_comb begin
     if (exceptionE) begin
       trap_is_intE = 1'b0; trap_causeE = exc_codeE;
@@ -326,14 +285,9 @@ module datapath (
   assign trap_en   = exceptionE | timer_intE;
   assign mret_enE  = ctrlE.is_mret;
 
-  // A CSR write, or the trap/mret state commit, must NOT happen on a
-  // cycle where EnterDebug is also asserted -- that instruction is being
-  // squashed (it will re-execute identically after resume). See
-  // csr_file.sv's header for why this gate lives here instead of inside
-  // csr_file itself. A plain CSR write is additionally suppressed when
-  // trap_en fires the same cycle (this exact instruction is the one
-  // being interrupted/excepted -- precise-interrupt semantics, it
-  // re-executes cleanly after the handler's mret).
+  // Nothing commits to the CSR file on an EnterDebug cycle: that instruction
+  // is squashed and re-executes after resume. csr_we is additionally
+  // suppressed under trap_en, since that instruction is the one excepting.
   logic csr_we_gated, trap_en_gated, mret_en_gated;
   assign csr_we_gated  = ctrlE.is_csr & ~EnterDebug & ~trap_en;
   assign trap_en_gated = trap_en  & ~EnterDebug;
@@ -363,13 +317,8 @@ module datapath (
   logic [31:0] CsrRdataM;
   logic        validM; // validE, one stage later
 
-  // FlushM (an input, driven by hazard_unit.sv from EnterDebug | trap_en)
-  // squashes this instruction's own commit for two reasons: EnterDebug
-  // (original) and trap_en (new -- the EX-stage instruction itself is
-  // the one excepting/being interrupted, so its RegWrite/MemWrite must
-  // not reach dmem/regfile). mret needs no such self-squash: it has no
-  // RegWrite/MemWrite of its own, so it's deliberately NOT part of
-  // FlushM's condition (see hazard_unit.sv).
+  // FlushM keeps the EX-stage instruction's own RegWrite/MemWrite from
+  // reaching the regfile or dmem when it is excepting or being halted.
   always_ff @(posedge clk, posedge reset)
     if (reset || FlushM) begin
       RegWriteM <= 0; MemWriteM <= 0; ResultSrcM <= 2'b0; MemFunct3M <= 3'b0;
@@ -387,17 +336,10 @@ module datapath (
   assign ALUResultM = ALUResultM_r;
   assign WriteDataM = WriteDataM_r;
 
-  // ---- the value this MEM-stage instruction will actually write to rd ----
-  //
-  // NOT ALUResultM. That is only the right value when the result IS the ALU
-  // result; a CSR read writes CsrRdataM and JAL/JALR write the link address.
-  //
-  // RESULT_MEM (a load) is deliberately absent: its data does not exist yet at
-  // MEM-forward time, which is why hazard_unit.sv stalls instead of forwarding
-  // it. That interlock is what makes `default` safe here.
-  //
-  // Getting this wrong hung tb_pipe_csr -- docs/BUGS.md, "D6 -- The MEM-stage
-  // forwarding mux", has the history.
+  // The value this MEM-stage instruction will write to rd -- not ALUResultM,
+  // which is only correct for ALU results. RESULT_MEM is absent because the
+  // loaded data does not exist yet; hazard_unit.sv stalls instead, which is
+  // what makes `default` safe.
   always_comb
     unique case (ResultSrcM)
       RESULT_CSR:     FwdResultM = CsrRdataM;
@@ -408,18 +350,14 @@ module datapath (
   // ================= MEM/WB register =================
   logic [31:0] ALUResultW, ReadDataW, PCPlus4W, CsrRdataW;
   logic [1:0]  ResultSrcW;
-  // Store address/data/width, carried one stage past the point the store
-  // actually commits (dmem sees it at MEM). Nothing in the core reads these
-  // back -- they exist so retire_if.sv can hand a monitor the store and the
-  // retirement it belongs to as one record, instead of making the monitor
-  // correlate a MEM-stage bus event with a WB-stage retirement by hand.
+  // Store address/data/width, carried one stage past the commit at MEM so
+  // retire_if.sv can present the store and its retirement as one record.
+  // Nothing in the core reads them back.
   logic [31:0] StoreAddrW, StoreDataW;
   logic [2:0]  MemFunct3W;
   logic        MemWriteW;
-  // validM one stage later, and the signal a monitor must gate on -- NOT
-  // "InstrW != NOP_INSTR". A real program can contain a genuine ADDI x0,x0,0,
-  // bit-identical to a flush-inserted bubble; validW is 0 only when the slot
-  // was squashed, whatever value landed in it.
+  // The signal a monitor gates on -- not `InstrW != NOP_INSTR`, since a real
+  // ADDI x0,x0,0 is bit-identical to a flush-inserted bubble.
   logic        validW;
 
   always_ff @(posedge clk, posedge reset)
@@ -440,14 +378,12 @@ module datapath (
     end
 
   // ================= Writeback =================
-  // (ResultW itself is declared up in the Decode section -- see the comment there)
-  // widened to mux4: d3 = CsrRdataW, selected when ResultSrcW == RESULT_CSR (2'b11)
+  // (ResultW is declared up in the Decode section)
   mux4 #(32) resultmux (
       .d0(ALUResultW), .d1(ReadDataW), .d2(PCPlus4W), .d3(CsrRdataW),
       .s(ResultSrcW), .y(ResultW));
 
-  // retirement outputs -- straight passthrough of WB-stage signals under
-  // clean names for retire_if.sv to expose to a monitor
+  // retirement outputs -- WB-stage passthrough for retire_if.sv
   assign RdW_retire        = RdW;
   assign ResultW_retire    = ResultW;
   assign RegWriteW_retire  = RegWriteW;

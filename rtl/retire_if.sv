@@ -1,25 +1,13 @@
 // =============================================================================
 // retire_if.sv
 //
-// Commit/retire interface: the boundary the UVM monitor taps to observe one
-// record per retiring instruction. It follows the usual commit-interface shape
-// for RISC-V verification environments -- pc, instruction, rd, value, valid --
-// and is consumed by rv32i_monitor.
+// Commit/retire interface: one record per retiring instruction, tapped by
+// rv32i_monitor. The MON modport is read-only and samples through a clocking
+// block, so verification cannot drive DUT state.
 //
-// Bundling these as an `interface` rather than loose wires means a monitor
-// connects with one handle instead of ten individual signal names kept in
-// sync by hand across every module boundary between here and the testbench.
-//
-// The clocking block and MON modport give the monitor a synchronous,
-// read-only view: it samples on posedge clk and cannot drive DUT signals.
-//
-// STYLE GUIDE EXCEPTION -- `interface` is generally discouraged by the
-// lowRISC style guide for synthesizable RTL, because it can obscure
-// hierarchy and complicate lint/CDC tooling. This one is deliberate and
-// outside that concern: it is a verification-side tap point, driven by the
-// DUT modport and read only by a monitor's MON modport, never a replacement
-// for an ordinary port list on synthesizable logic. It is the same pattern
-// the guide's own verification infrastructure uses.
+// Style-guide note: lowRISC discourages `interface` in synthesizable RTL.
+// This one is a verification tap, not a port list, which is the exception the
+// guide's own verification code takes.
 // =============================================================================
 
 interface retire_if(input logic clk, input logic reset);
@@ -27,48 +15,22 @@ interface retire_if(input logic clk, input logic reset);
   logic [31:0] instr;
   logic [4:0]  rd;
   logic [31:0] wdata;
-  logic        regwrite_valid;   // 1 the cycle a real (non-bubble) instruction
-                                   // retires with a register writeback
-  logic        retire_valid;     // 1 the cycle a real (non-bubble) instruction
-                                   // retires, regardless of whether it writes a
-                                   // register. regwrite_valid alone cannot tell a
-                                   // monitor "something real happened this cycle"
-                                   // for a store or a branch; this can. Sourced
-                                   // from datapath.sv's validW.
+  logic        regwrite_valid;   // real retirement with a register writeback
+  logic        retire_valid;     // real (non-bubble) retirement, from validW
 
   // ---- store side of the same retirement ----
   //
-  // Presented here rather than left for a monitor to scrape off the memory
-  // bus. The store commits to dmem at MEM, one cycle before the instruction
-  // retires at WB, so a bus-side monitor would have to re-derive which
-  // retirement each bus event belongs to. datapath.sv carries the address,
-  // data and width forward to WB so the pairing is structural instead.
-  //
-  // store_data is the full 32-bit register value. Only the low byte
-  // (funct3=000) or halfword (001) is architecturally stored for SB/SH, so a
-  // checker must mask by store_funct3 before comparing against a reference.
-  logic        store_valid;      // 1 if this retiring instruction was a store
+  // Carried forward from MEM so the store and the retirement it belongs to
+  // arrive as one record. store_data is the full 32-bit register value: a
+  // checker must mask by store_funct3 before comparing SB/SH.
+  logic        store_valid;
   logic [31:0] store_addr;
   logic [31:0] store_data;
   logic [2:0]  store_funct3;
 
-  // ---- clocking block / MON modport: used ONLY by the UVM monitor ----
-  //
-  // rv32i_monitor (verif/uvm/rv32i_uvm_pkg.sv) samples through vif.mon_cb,
-  // so this must be present for the UVM environment -- which is why it is
-  // compiled in BY DEFAULT, and the UVM flows in verif/uvm/RUNNING.md need no
-  // special flags.
-  //
-  // Neither free simulator supports it, though: Verilator 5.x rejects
-  // "modport clocking" outright, and Icarus 12 cannot parse a clocking block
-  // inside an interface at all. Since the three RTL testbenches in tb_pipe.sv
-  // never touch either construct, the RTL-only regression defines
-  // RTL_ONLY_NO_CLOCKING to skip it -- run_sim.sh passes that flag for both
-  // simulators, so it is not something anyone has to remember.
-  //
-  // Deliberately keyed on what the compile is FOR rather than on which tool
-  // is running: a `ifndef VERILATOR` guard would have left Icarus broken, and
-  // chasing per-tool macros here would grow a new branch per simulator.
+  // Neither Icarus 12 nor Verilator 5.x can parse a clocking block inside an
+  // interface. run_sim.sh defines RTL_ONLY_NO_CLOCKING for the RTL-only
+  // regression, which never uses the MON modport; UVM flows compile it in.
 `ifndef RTL_ONLY_NO_CLOCKING
   clocking mon_cb @(posedge clk);
     input pc, instr, rd, wdata, regwrite_valid, retire_valid,

@@ -7,10 +7,9 @@
 #   ./run_sim.sh verilator  # one simulator only
 #   ./run_sim.sh icarus hazard
 #
-# Both simulators are supported deliberately: they disagree about enough
-# corners (X-propagation, scheduling, unsupported constructs) that agreement
-# between them is worth more than either one alone. See docs/DESIGN_GUIDE.md
-# docs/BUGS.md.
+# Both simulators are run deliberately: they disagree about X-propagation,
+# scheduling and unsupported constructs, so agreement between them is worth
+# more than either alone. See docs/BUGS.md.
 # =============================================================================
 set -u
 cd "$(dirname "$0")" || exit 1
@@ -47,10 +46,9 @@ run_verilator () {
   echo "===== Verilator ====="
   for tb in $TBS; do
     printf '  %-7s : ' "$tb"
-    # -j 1 deliberately: Verilator 5.020 intermittently dies with
-    # "Internal Error: attempted to destroy locked Thread Pool" under -j 0 on
-    # this design. Single-threaded elaboration costs a couple of seconds here
-    # and is reproducible, which matters more for a regression script.
+    # -j 1: Verilator 5.020 intermittently dies under -j 0 on this design
+    # ("attempted to destroy locked Thread Pool"). Reproducible beats fast in
+    # a regression script.
     if ! verilator --binary -j 1 --top-module "tb_pipe_$tb" \
          -DRTL_ONLY_NO_CLOCKING -Wno-PINMISSING -Wno-fatal --timescale 1ns/1ps \
          -Mdir "build/vl_$tb" -o "sim_$tb" $FILES > "build/vl_$tb.log" 2>&1; then

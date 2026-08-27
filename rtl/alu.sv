@@ -8,11 +8,8 @@
 //   0010 and   0110 sll    1010 passb
 //   0011 or    0111 srl
 //
-// PASSB returns b untouched. It exists for LUI, so the U-immediate can flow
-// through the normal EX-stage path and the normal writeback mux. The
-// alternative is a dedicated writeback source threaded from D to W, which
-// means carrying ImmExt through three extra pipeline registers to serve one
-// instruction.
+// PASSB returns b untouched, so LUI's U-immediate can use the normal EX path
+// and writeback mux instead of a dedicated source threaded from D to W.
 // =============================================================================
 
 module alu (
@@ -33,13 +30,8 @@ module alu (
   assign isAddSub = (alucontrol == 4'b0000) | (alucontrol == 4'b0001) |
                     (alucontrol == 4'b0101);
 
-  // unique case: every alucontrol encoding this design ever produces is
-  // listed explicitly (see rv32i_pkg.sv); the default below is defensive
-  // only -- aludecoder never emits the 5 remaining 4-bit combinations. A
-  // defined fallback (32'b0) is used rather than 32'bx, per the style
-  // guide's "RTL must not assert X to indicate don't-care" rule: an
-  // unreachable path should still drive a known value, not propagate
-  // unknowns into anything that happens to read result speculatively.
+  // The default drives 0 rather than X: an unreachable path should still
+  // produce a known value.
   always_comb
     unique case (alucontrol)
       4'b0000:
