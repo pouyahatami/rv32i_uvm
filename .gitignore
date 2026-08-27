@@ -46,7 +46,6 @@ Thumbs.db
 desktop.ini
 
 # local tool config, not shared
-.claude/
 .out-of-code-insights/
 
 # personal working notes -- scratch for my own study, not part of the design.
