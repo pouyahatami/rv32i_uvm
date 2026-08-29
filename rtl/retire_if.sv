@@ -1,13 +1,12 @@
 // =============================================================================
 // retire_if.sv
 //
-// Commit/retire interface: one record per retiring instruction, tapped by
-// rv32i_monitor. The MON modport is read-only and samples through a clocking
-// block, so verification cannot drive DUT state.
+// Commit/retire interface: one record per retiring instruction, carrying the
+// register writeback and the store that belongs to the same retirement.
 //
-// Style-guide note: lowRISC discourages `interface` in synthesizable RTL.
-// This one is a verification tap, not a port list, which is the exception the
-// guide's own verification code takes.
+// A verification tap, not part of the synthesizable design. rv32i_monitor
+// observes it through the MON modport, which is read-only and samples through
+// a clocking block, so the testbench cannot drive DUT state.
 // =============================================================================
 
 interface retire_if(input logic clk, input logic reset);
@@ -16,7 +15,7 @@ interface retire_if(input logic clk, input logic reset);
   logic [4:0]  rd;
   logic [31:0] wdata;
   logic        regwrite_valid;   // real retirement with a register writeback
-  logic        retire_valid;     // real (non-bubble) retirement, from validW
+  logic        retire_valid;     // real (non-bubble) retirement, from instrValidW
 
   // ---- store side of the same retirement ----
   //
