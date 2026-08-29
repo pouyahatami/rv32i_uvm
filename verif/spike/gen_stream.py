@@ -313,13 +313,16 @@ def spike_trace(spike, elf, sentinel_word, memmap, max_instr):
     if p.returncode != 0:
         sys.exit(f"spike failed:\n{' '.join(cmd)}\n{p.stdout}\n{p.stderr}")
 
+    # Spike's log is text. The scoreboard needs a table
+    # One row per retired instruction
+    # pc  instr  rd  wdata  regwrite  store_valid  store_addr  store_data
     trace = []
     for line in open(logname):
-        m = COMMIT.match(line.strip())
+        m = COMMIT.match(line.strip()) # Trim surrounding whitespace and look for pattern in the beggining of the string 
         if not m:
             continue
         pc, instr, rest = int(m.group(1), 16), int(m.group(2), 16), m.group(3)
-        rw = REGWRITE.search(rest)
+        rw = REGWRITE.search(rest) # Search anywhere in the string 
         if rw:
             rd, wdata, regwrite = int(rw.group(1)), int(rw.group(2), 16), 1
         else:
@@ -336,10 +339,7 @@ def spike_trace(spike, elf, sentinel_word, memmap, max_instr):
 
     if not trace or trace[-1][1] != sentinel_word:
         sys.exit("spike never retired the sentinel -- the generated program "
-                 "did not terminate as expected. The usual cause is the "
-                 "program corrupting itself: Spike has one address space, the "
-                 "DUT is Harvard, so a store into the code image loops Spike "
-                 "forever. See compute_data_window_base().")
+                 "did not terminate as expected.")
 
     # Drop Spike's boot ROM: it runs a short setup sequence before jumping to
     # the ELF entry, and those retirements have no counterpart in the DUT, which
