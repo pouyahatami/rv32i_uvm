@@ -28,7 +28,7 @@ class rv32i_env extends uvm_env;
 
   function void connect_phase(uvm_phase phase);
     super.connect_phase(phase);
-    agt.mon.ap.connect(sb.retire_imp);
-    agt.mon.ap.connect(cov.analysis_export);
+    agt.mon.analysis_port.connect(sb.retire_imp);
+    agt.mon.analysis_port.connect(cov.analysis_export);
   endfunction
 endclass
