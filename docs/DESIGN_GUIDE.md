@@ -246,7 +246,7 @@ the main ALU: CSRRC needs an AND-with-inverted-operand that the ALU has no
 control code for, and adding one would grow a shared resource to serve one
 instruction.
 
-### `validE`
+### `instrValidE`
 
 A 1-bit register, separate from the control bundle, that is 0 exactly when this
 cycle's ID/EX load was a flush-inserted bubble.
@@ -258,9 +258,10 @@ in EX. Without the gate, an interrupt landing on a bubble cycle right after a
 flush would capture `mepc = 0` or a stale PC instead of a real resumable
 address.
 
-`validE` is carried forward as `validM` and `validW`, and `validW` is what a
-monitor must gate on. It is not derivable from `InstrW`, because a real program
-can contain a genuine `ADDI x0,x0,0`, bit-identical to a flush-inserted bubble.
+`instrValidE` is carried forward as `instrValidM` and `instrValidW`, and
+`instrValidW` is what a monitor must gate on. It is not derivable from
+`InstrW`, because a real program can contain a genuine `ADDI x0,x0,0`,
+bit-identical to a flush-inserted bubble.
 
 ### Trap priority
 

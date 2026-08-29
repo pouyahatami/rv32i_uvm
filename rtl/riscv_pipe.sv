@@ -140,7 +140,7 @@ module riscv_pipe (
              .RdW_retire    (retire.rd),
              .ResultW_retire(retire.wdata),
              .RegWriteW_retire(retire.regwrite_valid),
-             .ValidW_retire (retire.retire_valid),
+             .InstrValidW_retire(retire.retire_valid),
              .MemWriteW_retire (retire.store_valid),
              .StoreAddrW_retire(retire.store_addr),
              .StoreDataW_retire(retire.store_data),

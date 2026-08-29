@@ -10,7 +10,7 @@
 // trap/mret PC redirect.
 //
 // docs/DESIGN_GUIDE.md sections 3-5 have the stage-by-stage walk, the trap
-// priority table, and the validE/validM/validW chain.
+// priority table, and the instrValidE/instrValidM/instrValidW chain.
 // =============================================================================
 
 import rv32i_pkg::*;
@@ -74,8 +74,8 @@ module datapath (
     output logic [4:0]  RdW_retire,
     output logic [31:0] ResultW_retire,
     output logic        RegWriteW_retire,
-    output logic        ValidW_retire,      // non-bubble retirement
-    output logic        MemWriteW_retire,   // store side of the same retirement
+    output logic        InstrValidW_retire,  // non-bubble retirement
+    output logic        MemWriteW_retire,    // store side of the same retirement
     output logic [31:0] StoreAddrW_retire,
     output logic [31:0] StoreDataW_retire,
     output logic [2:0]  MemFunct3W_retire
@@ -108,14 +108,14 @@ module datapath (
 
   // ================= IF/ID register =================
   logic [31:0] PCD, PCPlus4D;
-  logic        validD; // 0 until the first real fetch reaches Decode -- see below
+  logic        instrValidD; // 0 until the first real fetch reaches Decode 
 
   always_ff @(posedge clk, posedge reset)
     if (reset)         begin InstrD <= NOP_INSTR; PCD <= 32'h0; PCPlus4D <= 32'h0;
-                             validD <= 1'b0; end
-    else if (FlushD)   begin InstrD <= NOP_INSTR; validD <= 1'b0; end
+                             instrValidD <= 1'b0; end
+    else if (FlushD)   begin InstrD <= NOP_INSTR; instrValidD <= 1'b0; end // monitor should not observe this instr
     else if (!StallD)  begin InstrD <= InstrF; PCD <= PCF; PCPlus4D <= PCPlus4F;
-                             validD <= 1'b1; end
+                             instrValidD <= 1'b1; end
 
   // ================= Decode =================
   assign Rs1D = InstrD[19:15];
@@ -141,7 +141,7 @@ module datapath (
   id_ex_ctrl_t ctrlE;
   logic [2:0]  funct3E;
   logic [31:0] RD1E, RD2E, PCPlus4E, ImmExtE, InstrE;
-  logic        validE; // 0 only on a flush-inserted bubble (DESIGN_GUIDE.md)
+  logic        instrValidE; // 0 only on a flush-inserted bubble 
 
   always_ff @(posedge clk, posedge reset)
     if (reset || FlushE) begin
@@ -149,15 +149,15 @@ module datapath (
       RdE <= 5'b0; Rs1E <= 5'b0; Rs2E <= 5'b0; funct3E <= 3'b0;
       RD1E <= 32'b0; RD2E <= 32'b0; PCE <= 32'b0; PCPlus4E <= 32'b0; ImmExtE <= 32'b0;
       InstrE <= NOP_INSTR;
-      validE <= 1'b0;
+      instrValidE <= 1'b0;
     end else begin
       ctrlE <= ctrlD_c;
       RdE <= RdD; Rs1E <= Rs1D; Rs2E <= Rs2D; funct3E <= InstrD[14:12];
       RD1E <= RD1D; RD2E <= RD2D; PCE <= PCD; PCPlus4E <= PCPlus4D; ImmExtE <= ImmExtD;
       InstrE <= InstrD;
-      // validD, not 1'b1: on the first edge after reset deasserts, Decode still
+      // instrValidD, not 1'b1: on the first edge after reset deasserts, Decode still
       // holds the reset-cleared bubble rather than a fetched instruction.
-      validE <= validD;
+      instrValidE <= instrValidD;
     end
 
   assign is_ebreakE = ctrlE.is_ebreak;
@@ -264,9 +264,9 @@ module datapath (
     end
   end
 
-  // ---- timer interrupt (gated by validE -- DESIGN_GUIDE.md) ----
+  // ---- timer interrupt (gated by instrValidE -- DESIGN_GUIDE.md) ----
   logic timer_intE;
-  assign timer_intE = validE & mstatus_mieE & mie_mtieE & mtip_i;
+  assign timer_intE = instrValidE & mstatus_mieE & mie_mtieE & mtip_i;
 
   logic        trap_is_intE;
   logic [4:0]  trap_causeE;
@@ -315,7 +315,7 @@ module datapath (
   logic [31:0] ALUResultM_r, WriteDataM_r, PCPlus4M, InstrM;
   logic [1:0]  ResultSrcM;
   logic [31:0] CsrRdataM;
-  logic        validM; // validE, one stage later
+  logic        instrValidM; // instrValidE, one stage later
 
   // FlushM keeps the EX-stage instruction's own RegWrite/MemWrite from
   // reaching the regfile or dmem when it is excepting or being halted.
@@ -324,13 +324,13 @@ module datapath (
       RegWriteM <= 0; MemWriteM <= 0; ResultSrcM <= 2'b0; MemFunct3M <= 3'b0;
       ALUResultM_r <= 32'b0; WriteDataM_r <= 32'b0; RdM <= 5'b0; PCPlus4M <= 32'b0;
       InstrM <= NOP_INSTR; CsrRdataM <= 32'b0;
-      validM <= 1'b0;
+      instrValidM <= 1'b0;
     end else begin
       RegWriteM <= ctrlE.RegWrite; MemWriteM <= ctrlE.MemWrite; ResultSrcM <= ctrlE.ResultSrc;
       MemFunct3M <= funct3E;
       ALUResultM_r <= ALUResultE; WriteDataM_r <= WriteDataE; RdM <= RdE; PCPlus4M <= PCPlus4E;
       InstrM <= InstrE; CsrRdataM <= csr_rdataE;
-      validM <= validE;
+      instrValidM <= instrValidE;
     end
 
   assign ALUResultM = ALUResultM_r;
@@ -356,23 +356,23 @@ module datapath (
   logic [31:0] StoreAddrW, StoreDataW;
   logic [2:0]  MemFunct3W;
   logic        MemWriteW;
-  // The signal a monitor gates on -- not `InstrW != NOP_INSTR`, since a real
-  // ADDI x0,x0,0 is bit-identical to a flush-inserted bubble.
-  logic        validW;
+  // The signal a monitor gates on
+  // ADDI x0,x0,0 is bit-identical to a flush-inserted bubble so there must be a signal to differentiate them 
+  logic        instrValidW;
 
   always_ff @(posedge clk, posedge reset)
     if (reset) begin
       RegWriteW <= 0; ResultSrcW <= 2'b0;
       ALUResultW <= 32'b0; ReadDataW <= 32'b0; RdW <= 5'b0; PCPlus4W <= 32'b0;
       InstrW <= NOP_INSTR; PCW <= 32'b0; CsrRdataW <= 32'b0;
-      validW <= 1'b0;
+      instrValidW <= 1'b0;
       MemWriteW <= 1'b0; StoreAddrW <= 32'b0; StoreDataW <= 32'b0; MemFunct3W <= 3'b0;
     end else begin
       RegWriteW <= RegWriteM; ResultSrcW <= ResultSrcM;
       ALUResultW <= ALUResultM; ReadDataW <= ReadDataM; RdW <= RdM; PCPlus4W <= PCPlus4M;
       InstrW <= InstrM; PCW <= PCPlus4M - 32'd4; // PC of the retiring instruction
       CsrRdataW <= CsrRdataM;
-      validW <= validM;
+      instrValidW <= instrValidM;
       MemWriteW <= MemWriteM; StoreAddrW <= ALUResultM; StoreDataW <= WriteDataM;
       MemFunct3W <= MemFunct3M;
     end
@@ -384,13 +384,13 @@ module datapath (
       .s(ResultSrcW), .y(ResultW));
 
   // retirement outputs -- WB-stage passthrough for retire_if.sv
-  assign RdW_retire        = RdW;
-  assign ResultW_retire    = ResultW;
-  assign RegWriteW_retire  = RegWriteW;
-  assign ValidW_retire     = validW;
-  assign MemWriteW_retire  = MemWriteW;
-  assign StoreAddrW_retire = StoreAddrW;
-  assign StoreDataW_retire = StoreDataW;
-  assign MemFunct3W_retire = MemFunct3W;
+  assign RdW_retire         = RdW;
+  assign ResultW_retire     = ResultW;
+  assign RegWriteW_retire   = RegWriteW;
+  assign InstrValidW_retire = instrValidW;
+  assign MemWriteW_retire   = MemWriteW;
+  assign StoreAddrW_retire  = StoreAddrW;
+  assign StoreDataW_retire  = StoreDataW;
+  assign MemFunct3W_retire  = MemFunct3W;
 
 endmodule
