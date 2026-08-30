@@ -32,6 +32,7 @@ class rv32i_monitor extends uvm_monitor;
     forever begin
       @(vif.mon_cb);
       if (vif.mon_cb.retire_valid) begin
+        // create a transaction and fetch the 9 inputs from the interface
         txn = rv32i_retire_txn::type_id::create("txn");
         txn.pc           = vif.mon_cb.pc;
         txn.instr        = vif.mon_cb.instr;

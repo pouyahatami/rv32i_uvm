@@ -383,7 +383,8 @@ module datapath (
       .d0(ALUResultW), .d1(ReadDataW), .d2(PCPlus4W), .d3(CsrRdataW),
       .s(ResultSrcW), .y(ResultW));
 
-  // retirement outputs -- WB-stage passthrough for retire_if.sv
+  // retirement outputs 
+  // WB-stage passthrough for retire_if.sv
   assign RdW_retire         = RdW;
   assign ResultW_retire     = ResultW;
   assign RegWriteW_retire   = RegWriteW;

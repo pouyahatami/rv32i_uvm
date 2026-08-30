@@ -1,6 +1,7 @@
 // ===========================================================================
 // Scoreboard: lockstep-checks every real retirement against the Spike
-// reference trace, read from stream_trace.txt at build time.
+// reference trace. The trace is loaded from stream_trace.txt in build_phase;
+// the comparison itself runs in write(), once per retirement.
 //
 // Four checks per retirement: the PC, the instruction word, the register
 // writeback (skipped for rd==x0), and the store address and architecturally
@@ -43,7 +44,7 @@ class rv32i_scoreboard extends uvm_scoreboard;
   int unsigned retire_index;
   int unsigned num_mismatches;
   checker_state_e checker_state;
-  event        done;
+  event        done;  // triggered at the sentinel or a divergence; rv32i_random_test waits on it
 
   // Mask the word according to the store width (byte, halfword, or word).
   function bit [31:0] store_mask(bit [2:0] funct3);

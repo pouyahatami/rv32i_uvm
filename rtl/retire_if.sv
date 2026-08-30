@@ -27,9 +27,10 @@ interface retire_if(input logic clk, input logic reset);
   logic [31:0] store_data;
   logic [2:0]  store_funct3;
 
-  // Neither Icarus 12 nor Verilator 5.x can parse a clocking block inside an
+  // Neither Icarus 12 nor Verilator can parse a clocking block inside an
   // interface. run_sim.sh defines RTL_ONLY_NO_CLOCKING for the RTL-only
-  // regression, which never uses the MON modport; UVM flows compile it in.
+  // regression, which never uses the MON modport. UVM flows compile it in.
+  // if NAME is not defined, keep this text; otherwise delete it.
 `ifndef RTL_ONLY_NO_CLOCKING
   clocking mon_cb @(posedge clk);
     input pc, instr, rd, wdata, regwrite_valid, retire_valid,
