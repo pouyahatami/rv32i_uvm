@@ -30,7 +30,7 @@ class rv32i_scoreboard extends uvm_scoreboard;
     CHECKER_DESYNCED
   } checker_state_e;
 
-  // Reference trace, loaded from stream_trace.txt in build_phase.
+  // An queue of type ref_retire_t
   ref_retire_t reference_trace[$];
 
   uvm_analysis_imp #(rv32i_retire_txn, rv32i_scoreboard) retire_imp;
@@ -40,7 +40,7 @@ class rv32i_scoreboard extends uvm_scoreboard;
     retire_imp = new("retire_imp", this);
   endfunction
 
-  int unsigned num_checked;
+  int unsigned retire_index;
   int unsigned num_mismatches;
   checker_state_e checker_state;
   event        done;
@@ -61,6 +61,7 @@ class rv32i_scoreboard extends uvm_scoreboard;
 
   function void build_phase(uvm_phase phase);
     int    fd, fields_read, line_number;
+    // bit becuase these parameters cannot be X or Z since they are coming from spike
     bit [31:0] pc, instr, wdata, saddr, sdata;
     bit [4:0]  rd;
     bit        rw, svalid;
@@ -69,36 +70,36 @@ class rv32i_scoreboard extends uvm_scoreboard;
     super.build_phase(phase);
 
     // Initializing the scoreboard state 
-    num_checked    = 0;
+    retire_index    = 0;
     num_mismatches = 0;
     reference_trace.delete();
     checker_state  = CHECKER_ACTIVE;
     line_number    = 0;
 
-    if (!$value$plusargs("TRACE=%s", trace_file)) begin 
+    if (!$value$plusargs("TRACE=%s", trace_file)) 
       trace_file = "stream_trace.txt";
-    end 
-
-    // Read the Spike golden reference.
+  
+    // Read the Spike golden reference
     fd = $fopen(trace_file, "r");
-    if (fd == 0) begin 
+    if (fd == 0) 
+      // uvm_fatal is a macro with two arguments (ID, MESSAGE)
+      // $formatf returns a string to be sent as the "MESSAGE"
       `uvm_fatal("NOTRACE",
         $sformatf("cannot open reference trace '%s' -- generate it with verif/spike/gen_stream.py",
                   trace_file))
-    end 
 
-    // Columns: pc instr rd wdata regwrite store_valid store_addr store_data.
-    // Blank and // lines are skipped; every other line must have all eight.
+    // Columns: pc instr rd wdata regwrite store_valid store_addr store_data
+    // Blank and // lines are skipped; every other line must have all eight
     while ($fgets(line, fd) != 0) begin
       line_number++;
 
+      // Skip blank lines
       if ($sscanf(line, "%s", first_token) == 0)
         continue;
+      // Skip comment lines            Check the first two chars 
       if ((first_token.len() >= 2) && (first_token.substr(0, 1) == "//"))
         continue;
-
-      fields_read = $sscanf(line, "%h %h %d %h %d %d %h %h",
-                            pc, instr, rd, wdata, rw, svalid, saddr, sdata);
+      fields_read = $sscanf(line, "%h %h %d %h %d %d %h %h", pc, instr, rd, wdata, rw, svalid, saddr, sdata);
       if (fields_read == 8) begin
         reference.pc          = pc;
         reference.instr       = instr;
@@ -131,13 +132,13 @@ class rv32i_scoreboard extends uvm_scoreboard;
     `uvm_error(id,
       $sformatf({"%s; RTL and reference diverged at retirement #%0d. ",
                  "Later comparisons would be meaningless, so checking stops."},
-                msg, num_checked))
+                msg, retire_index))
     num_mismatches++;
     checker_state = CHECKER_DESYNCED;
     -> done;
   endfunction
 
-  function void write(rv32i_retire_txn t);
+  function void write(rv32i_retire_txn compare);
     ref_retire_t expected;
     bit [31:0] mask;
     bit [2:0]  expected_store_funct3;
@@ -147,68 +148,67 @@ class rv32i_scoreboard extends uvm_scoreboard;
     // Ignore retirements after normal completion or terminal divergence.
     if (checker_state != CHECKER_ACTIVE) return;
 
-    if (num_checked >= reference_trace.size()) begin
+    if (retire_index >= reference_trace.size()) begin
       diverge("TRACE_OVERRUN",
         $sformatf("retirement #%0d but the reference trace has only %0d entries (instr=0x%08h)",
-                  num_checked, reference_trace.size(), t.instr));
+                  retire_index, reference_trace.size(), compare.instr));
       return;
     end
-    expected = reference_trace[num_checked];
+    expected = reference_trace[retire_index];
 
-    // ---- control flow ----
-    if (expected.pc !== t.pc) begin
+    // control flow 
+    if (expected.pc !== compare.pc) begin
       diverge("PC_MISMATCH",
         $sformatf("retirement #%0d: RTL pc=0x%08h, Spike expected pc=0x%08h (instr=0x%08h)",
-                  num_checked, t.pc, expected.pc, t.instr));
+                  retire_index, compare.pc, expected.pc, compare.instr));
       return;
     end
 
-    // ---- the instruction itself must be the one Spike executed ----
-    if (expected.instr !== t.instr) begin
+    //  the instruction itself must be the one Spike executed 
+    if (expected.instr !== compare.instr) begin
       diverge("INSTR_MISMATCH",
         $sformatf("retirement #%0d: RTL retired instr=0x%08h, Spike executed 0x%08h (pc=0x%08h)",
-                  num_checked, t.instr, expected.instr, t.pc));
+                  retire_index, compare.instr, expected.instr, compare.pc));
       return;
     end
 
-    // A write to x0 has no architectural effect, so treat it as no write on
-    // either side. All other writes must agree in both presence and value.
-    dut_writes_reg = t.regwrite && (t.rd != 5'd0);
+    // A write to x0 has no architectural effect, so treat it as no write on either side
+    dut_writes_reg = compare.regwrite && (compare.rd != 5'd0);
     ref_writes_reg = expected.regwrite && (expected.rd != 5'd0);
     if (dut_writes_reg !== ref_writes_reg) begin
       `uvm_error("REGWRITE_MISMATCH",
         $sformatf({"retirement #%0d: RTL architectural regwrite=%0d, Spike regwrite=%0d ",
                    "(RTL rd=x%0d, Spike rd=x%0d, instr=0x%08h, pc=0x%08h)"},
-                  num_checked, dut_writes_reg, ref_writes_reg,
-                  t.rd, expected.rd, t.instr, t.pc))
+                  retire_index, dut_writes_reg, ref_writes_reg,
+                  compare.rd, expected.rd, compare.instr, compare.pc))
       num_mismatches++;
     end else if (ref_writes_reg &&
-                 (expected.rd !== t.rd || expected.wdata !== t.wdata)) begin
+                 (expected.rd !== compare.rd || expected.wdata !== compare.wdata)) begin
       `uvm_error("REG_MISMATCH",
         $sformatf({"retirement #%0d: RTL wrote x%0d=0x%08h, Spike wrote ",
                    "x%0d=0x%08h (instr=0x%08h, pc=0x%08h)"},
-                  num_checked, t.rd, t.wdata, expected.rd, expected.wdata,
-                  t.instr, t.pc))
+                  retire_index, compare.rd, compare.wdata, expected.rd, expected.wdata,
+                  compare.instr, compare.pc))
       num_mismatches++;
     end
 
-    // ---- store address and data ----
-    if (t.store_valid !== expected.store_valid) begin
+    // store address and data 
+    if (compare.store_valid !== expected.store_valid) begin
       `uvm_error("STORE_MISMATCH",
         $sformatf("retirement #%0d: RTL %s a store, Spike %s (instr=0x%08h, pc=0x%08h)",
-                  num_checked,
-                  t.store_valid ? "performed" : "did not perform",
+                  retire_index,
+                  compare.store_valid ? "performed" : "did not perform",
                   expected.store_valid ? "did" : "did not",
-                  t.instr, t.pc))
+                  compare.instr, compare.pc))
       num_mismatches++;
     end else if (expected.store_valid) begin
       expected_store_funct3 = expected.instr[14:12];
-      if (t.store_funct3 !== expected_store_funct3) begin
+      if (compare.store_funct3 !== expected_store_funct3) begin
         `uvm_error("STORE_WIDTH_MISMATCH",
           $sformatf({"retirement #%0d: RTL store funct3=%03b, expected %03b ",
                      "(instr=0x%08h, pc=0x%08h)"},
-                    num_checked, t.store_funct3, expected_store_funct3,
-                    t.instr, t.pc))
+                    retire_index, compare.store_funct3, expected_store_funct3,
+                    compare.instr, compare.pc))
         num_mismatches++;
       end
 
@@ -216,28 +216,28 @@ class rv32i_scoreboard extends uvm_scoreboard;
       if (mask == 32'b0) begin
         `uvm_error("BAD_STORE_WIDTH",
           $sformatf("retirement #%0d: invalid store funct3=%03b in reference instruction 0x%08h",
-                    num_checked, expected_store_funct3, expected.instr))
+                    retire_index, expected_store_funct3, expected.instr))
         num_mismatches++;
-      end else if (expected.store_addr !== t.store_addr ||
-                   (expected.store_data & mask) !== (t.store_data & mask)) begin
+      end else if (expected.store_addr !== compare.store_addr ||
+                   (expected.store_data & mask) !== (compare.store_data & mask)) begin
         `uvm_error("STORE_MISMATCH",
           $sformatf({"retirement #%0d: RTL stored 0x%08h to 0x%08h, Spike stored 0x%08h ",
                      "to 0x%08h (width mask 0x%08h, instr=0x%08h, pc=0x%08h)"},
-                    num_checked, t.store_data & mask, t.store_addr,
+                    retire_index, compare.store_data & mask, compare.store_addr,
                     expected.store_data & mask, expected.store_addr,
-                    mask, t.instr, t.pc))
+                    mask, compare.instr, compare.pc))
         num_mismatches++;
       end
     end
 
-    num_checked++;
+    retire_index++;
 
-    if (t.regwrite && (t.rd == COMPLETION_GPR) &&
-        (t.wdata == COMPLETION_VALUE)) begin
+    if (compare.regwrite && (compare.rd == COMPLETION_GPR) &&
+        (compare.wdata == COMPLETION_VALUE)) begin
       checker_state = CHECKER_FINISHED;
       `uvm_info("SCOREBOARD",
         $sformatf("sentinel retired -- %0d instructions checked, %0d mismatches",
-                  num_checked, num_mismatches), UVM_LOW)
+                  retire_index, num_mismatches), UVM_LOW)
       -> done;
     end
   endfunction

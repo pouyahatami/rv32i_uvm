@@ -1,7 +1,6 @@
 // ===========================================================================
 // Monitor: samples retire_if.sv's MON modport every cycle, publishes one
-// rv32i_retire_txn per cycle where retire_valid is set -- the
-// definitive "a real instruction retired" signal (see retire_if.sv).
+// rv32i_retire_txn per cycle where retire_valid is set
 // ===========================================================================
 class rv32i_monitor extends uvm_monitor;
   `uvm_component_utils(rv32i_monitor)
