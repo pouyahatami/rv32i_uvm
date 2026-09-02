@@ -35,11 +35,11 @@ class rv32i_random_test extends uvm_test;
         @(env.sb.done);
         timed_out = 1'b0;
       end
-      repeat (WATCHDOG_CYCLES) @(posedge env.agt.drv.vif.clk);
+      repeat (WATCHDOG_CYCLES) @(posedge env.agt.drv.clk_rst_vif.clk);
     join_any
     disable fork;
 
-    repeat (10) @(posedge env.agt.drv.vif.clk);
+    repeat (10) @(posedge env.agt.drv.clk_rst_vif.clk);
 
     if (timed_out)
       `uvm_error("TIMEOUT",

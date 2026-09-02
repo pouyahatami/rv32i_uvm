@@ -8,7 +8,7 @@ class rv32i_driver extends uvm_driver #(rv32i_instr_txn);
   `uvm_component_utils(rv32i_driver)
 
   // Handles pointing to interface instances in the top level module 
-  virtual rv32i_if         vif;
+  virtual rv32i_if         clk_rst_vif;
   virtual imem_backdoor_if imem_bd_vif;
   virtual dmem_backdoor_if dmem_bd_vif;
 
@@ -18,8 +18,8 @@ class rv32i_driver extends uvm_driver #(rv32i_instr_txn);
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
-    if (!uvm_config_db#(virtual rv32i_if)::get(this, "", "vif", vif))
-      `uvm_fatal("NOVIF", "Could not get handle to virtual interface vif")
+    if (!uvm_config_db#(virtual rv32i_if)::get(this, "", "clk_rst_vif", clk_rst_vif))
+      `uvm_fatal("NOVIF", "Could not get handle to virtual interface clk_rst_vif")
     if (!uvm_config_db#(virtual imem_backdoor_if)::get(
             this, "", "imem_bd_vif", imem_bd_vif))
       `uvm_fatal("NOVIF",
@@ -34,8 +34,8 @@ class rv32i_driver extends uvm_driver #(rv32i_instr_txn);
     bit             done;
 
     // hold the DUT in reset while the program is being loaded into imem
-    vif.reset = 1'b1;
-    repeat (2) @(posedge vif.clk);
+    clk_rst_vif.reset = 1'b1;
+    repeat (2) @(posedge clk_rst_vif.clk);
 
     // Zero data memory before running the program (Spike expects this)
     dmem_bd_vif.clear();
@@ -54,7 +54,7 @@ class rv32i_driver extends uvm_driver #(rv32i_instr_txn);
     `uvm_info("DRIVER", $sformatf("backdoor-loaded %0d instruction words", idx), UVM_LOW)
 
     // release reset
-    repeat (2) @(posedge vif.clk);
-    vif.reset = 1'b0;
+    repeat (2) @(posedge clk_rst_vif.clk);
+    clk_rst_vif.reset = 1'b0;
   endtask
 endclass
