@@ -62,8 +62,6 @@ module tb_uvm_top;
     uvm_config_db#(virtual imem_backdoor_if)::set(null, "*", "imem_bd_vif", imem_bd_vif);
     uvm_config_db#(virtual dmem_backdoor_if)::set(null, "*", "dmem_bd_vif", dmem_bd_vif);
 
-    // Default so the environment runs with no required plusargs;
-    // +UVM_TESTNAME still overrides it.
     run_test("rv32i_random_test");
   end
 
