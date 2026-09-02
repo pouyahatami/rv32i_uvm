@@ -1,18 +1,16 @@
 # Bug record
 
-Every defect this project found, what caused it, and the check that now stands
-between it and a repeat.
+Every bug found in this project, what caused it, and whether anything now
+stops it coming back.
 
-Eighteen entries. Six are bugs in the CPU; twelve are bugs in the things that
-were supposed to be checking the CPU. Both halves are here on purpose: a broken
-checker is the more expensive failure, because it ends with someone "fixing" a
-working design.
+Twenty entries. `D` numbers are bugs in the CPU; `V` numbers are bugs in the
+verification that was supposed to catch them. Six and fourteen. The second
+group is here because a broken checker is the more expensive failure -- it
+ends with someone "fixing" a design that was already right.
 
-The last part of each entry is the one that matters. A bug you fixed is history;
-a bug you fixed *and can no longer reintroduce silently* is a result. Where no
-automated check guards a fix, this file says so rather than implying otherwise.
+Where a fix has no automated check behind it, the entry says so.
 
-The design these refer to is in [DESIGN_GUIDE.md](DESIGN_GUIDE.md).
+The design itself is in [DESIGN_GUIDE.md](DESIGN_GUIDE.md).
 
 ---
 
@@ -20,7 +18,7 @@ The design these refer to is in [DESIGN_GUIDE.md](DESIGN_GUIDE.md).
 
 | Found by | Count | Bugs |
 |---|---|---|
-| Reading the code | 3 | D1, D2, D3 |
+| Caught during bring-up, before the design ran | 3 | D1, D2, D3 |
 | Static elaboration (`pyslang`) | 3 | V1, V2, V3 |
 | Running a directed testbench | 2 | D4, D5 |
 | Running the stimulus generator | 3 | V4, V5, V6 |
@@ -31,18 +29,11 @@ The design these refer to is in [DESIGN_GUIDE.md](DESIGN_GUIDE.md).
 | Disassembling with GNU binutils | 1 | V11 |
 | External DV review + a mutation test | 3 | V12, V13, V14 |
 
-All three "found by reading" bugs were caught during construction, while the
-code was still warm, and all three were wiring bugs. **No bug was ever found by
-the author re-reading code they had already reviewed.** Fifteen of eighteen
-were found by a tool or by fresh eyes, and the two most serious RTL bugs, D4
-and D6, had each survived several deliberate review passes over exactly the
-file involved. The last three entries extend the pattern one level up: they are
-defects in this project's *signoff mechanics*, found by an external reviewer
-who did what the author had not, deliberately broke an assertion and watched
-whether the regression noticed.
-
-That is the argument for the whole verification stack in this repo, and it is
-why the sections below spend more space on the check than on the fix.
+D1-D3 never reached a simulation -- they were wiring mistakes caught while the
+code was still being written, and they are here for completeness rather than
+because anything caught them. The other seventeen escaped into something that
+was supposed to catch them. Nothing was ever found by re-reading code already
+reviewed: D4 and D6 each survived several passes over the exact file involved.
 
 ---
 
@@ -56,7 +47,7 @@ Bugs in the synthesizable RTL. These are the ones that would have shipped.
 
 **Where** `rtl/alu.sv:33`
 
-**Symptom** `SLT` returns the wrong result when the subtraction overflows , 
+**Symptom** `SLT` returns the wrong result when the subtraction overflows --
 `SLT x1, INT_MIN, 1` says "not less than". Correct everywhere else.
 
 **Root cause** `SLT` is implemented by reusing the subtract hardware and
@@ -152,7 +143,7 @@ the `rs1` field.
   interlock to its contract every cycle, a stall must have a cause, and must
   stall fetch and decode *and* bubble execute rather than doing some of those.
 - `gen_stream.py` now emits JAL, JALR, LUI and AUIPC, so the instructions whose
-  immediate bits alias the rs1/rs2 fields, the exact trigger for this bug , 
+  immediate bits alias the rs1/rs2 fields -- the exact trigger for this bug --
   appear in every generated stream and are checked against Spike at every
   retirement. `opcode.jal/jalr/lui/auipc` are ordinary in-scope coverage bins
   rather than the permanently-zero group they used to sit in.
@@ -295,13 +286,13 @@ needs `CsrRdataM`) and for JAL/JALR (which need `PCPlus4M`).
 It had been masked by an accident of bit numbering. `IsLoadE` was computed as
 `ResultSrc[0]`, which is true for both `RESULT_MEM` and `RESULT_CSR`. So CSR
 reads were being treated as loads and *stalled* rather than forwarded, and the
-mux was simply never asked for the CSR value. Fixing the aliasing , 
+mux was simply never asked for the CSR value. Fixing the aliasing --
 
 ```systemverilog
 assign IsLoadE = (ctrlE.ResultSrc == RESULT_MEM);
 ```
 
-,  exposed the real bug immediately: the trap handler's `mepc += 4` wrote back a
+-- exposed the real bug immediately: the trap handler's `mepc += 4` wrote back a
 stale value, so `mret` returned to the `ecall` that had trapped, and re-trapped,
 forever.
 
@@ -508,7 +499,7 @@ testbench went green.
 
 **Where** `rtl/tb_pipe.sv`
 
-**Root cause** `regfile.sv` is a RAM with no reset. That is correct hardware , 
+**Root cause** `regfile.sv` is a RAM with no reset. That is correct hardware --
 RISC-V does not define reset values for `x1`–`x31`. Under Icarus every
 never-written register reads X; under Verilator it reads 0, and the golden values
 expect 0.
@@ -570,7 +561,7 @@ describing the *design*.
 
 **Fix** The design's actual guarantee is a **priority**: `datapath.sv`'s IF/ID
 register tests `FlushD` before `StallD`, so a redirect always beats an interlock
-,  which is the only correct choice, since the stalled instruction is on the wrong
+-- which is the only correct choice, since the stalled instruction is on the wrong
 path and must not be preserved.
 
 ```systemverilog
@@ -701,7 +692,7 @@ writes_rd = cls < 75 and rd != 0          # R-type, I-type ALU, LOAD only
 recent_rd = [rd if writes_rd else 0] + recent_rd[:2]
 ```
 
-Making the bias real moved the same seed's coverage from 74.6% to 81.4% , 
+Making the bias real moved the same seed's coverage from 74.6% to 81.4% --
 the phantom dependencies had been displacing genuine ones.
 
 **The check now** `verif/spike/test_gen_stream.py`, unit tests over the pure
