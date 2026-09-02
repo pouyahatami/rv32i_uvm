@@ -17,7 +17,7 @@ interface retire_if(input logic clk, input logic reset);
   logic        regwrite_valid;   // real retirement with a register writeback
   logic        retire_valid;     // real (non-bubble) retirement, from instrValidW
 
-  // ---- store side of the same retirement ----
+  // store side of the same retirement
   //
   // Carried forward from MEM so the store and the retirement it belongs to
   // arrive as one record. store_data is the full 32-bit register value: a
@@ -30,13 +30,13 @@ interface retire_if(input logic clk, input logic reset);
   // Neither Icarus 12 nor Verilator can parse a clocking block inside an
   // interface. run_sim.sh defines RTL_ONLY_NO_CLOCKING for the RTL-only
   // regression, which never uses the MON modport. UVM flows compile it in.
-  // if NAME is not defined, keep this text; otherwise delete it.
+
+  // if NAME is not defined, keep this text; otherwise delete it
 `ifndef RTL_ONLY_NO_CLOCKING
   clocking mon_cb @(posedge clk);
     input pc, instr, rd, wdata, regwrite_valid, retire_valid,
           store_valid, store_addr, store_data, store_funct3;
   endclocking
-
   modport MON  (clocking mon_cb, input reset);
 `endif
   modport DUT  (output pc, output instr, output rd, output wdata, output regwrite_valid,
