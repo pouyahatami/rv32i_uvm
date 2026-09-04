@@ -55,16 +55,27 @@ module hazard_unit (
     else                                                 SelectBE = FWD_NONE;
   end
 
+  // Every source that redirects the PC. Assigned ahead of the interlock
+  // because StallF below is defined against it.
+  //
+  // FlushM suppresses the EX-stage instruction's own RegWrite/MemWrite.
+  // mret and dret are excluded: neither has architectural state to suppress.
+  assign FlushD = PCSrcE | JumpD | EnterDebug | ExitDebug | trap_en | mret_enE;
+
   // Rs*UsedD gates the compare: U/J-type and the CSR-immediate ops reuse the
   // rs1/rs2 bit positions as immediate bits.
   assign lwStallD = IsLoadE && (RdE != 0) &&
                     ((Rs1UsedD && (RdE == Rs1D)) || (Rs2UsedD && (RdE == Rs2D)));
-  assign StallF   = lwStallD;
+
+  // A redirect outranks the interlock. StallF gates the PC register, so
+  // leaving it asserted through a trap, mret or debug redirect drops the new
+  // PC while csr_file.sv has already committed mepc/mcause -- the core then
+  // falls straight through into the instruction the trap was meant to skip.
+  // That was D7 in docs/BUGS.md. StallD needs no such gate: every term in
+  // FlushD also squashes Decode, and the IF/ID register tests FlushD first.
+  assign StallF   = lwStallD & ~FlushD;
   assign StallD   = lwStallD;
 
-  // FlushM suppresses the EX-stage instruction's own RegWrite/MemWrite.
-  // mret and dret are excluded: neither has architectural state to suppress.
-  assign FlushD = PCSrcE | JumpD | EnterDebug | ExitDebug | trap_en | mret_enE;
   assign FlushE = PCSrcE | lwStallD | EnterDebug | ExitDebug | trap_en | mret_enE;
   assign FlushM = EnterDebug | trap_en;
 
