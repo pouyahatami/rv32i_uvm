@@ -107,7 +107,10 @@ module csr_file (
         CSR_MSCRATCH:
           mscratch_r <= csr_wdata;
         CSR_MEPC:
-          mepc_r <= csr_wdata;
+          // IALIGN is 32 here (no compressed instructions), so mepc[1:0] are
+          // read-only zero and a write to them is dropped rather than stored.
+          // Spike masks them; storing them would diverge on the read back.
+          mepc_r <= {csr_wdata[31:2], 2'b00};
         CSR_MCAUSE:
           mcause_r <= csr_wdata;
         CSR_MTVAL:
