@@ -60,10 +60,22 @@ emit(A.ADDI(2, 0, 0x111))               # forward-progress marker
 emit(0x0000007F)
 emit(A.ADDI(3, 0, 0x222))               # forward-progress marker
 
-# ---- misaligned load ----
+# ---- misaligned load, with a load-use interlock behind it ----
+# The marker reads x5, the faulting load's rd, so hazard_unit.sv asserts the
+# load-use stall on the same cycle datapath.sv redirects the PC to mtvec. A
+# redirect must outrank the interlock; when it did not, the trap committed
+# mepc/mcause and the core kept going anyway (D7 in docs/BUGS.md).
+#
+# The misaligned load is used rather than the timer interrupt, which reaches
+# the identical RTL path but cannot be aimed: clint.sv ticks per clock and the
+# Spike plugin ticks per retired instruction, so which instruction gets
+# preempted is not a comparable claim (DESIGN_GUIDE.md section 8).
+#
+# x5 is still 0 here -- the load faulted and never wrote back -- so the marker
+# lands on 0x333 either way and the check is on control flow, not on the value.
 emit(A.ADDI(4, 0, 1))                   # address 1 -- misaligned for LW
 emit(A.LW(5, 4, 0))
-emit(A.ADDI(6, 0, 0x333))               # forward-progress marker
+emit(A.ADDI(6, 5, 0x333))               # forward-progress marker, load-use on x5
 
 # ---- misaligned store ----
 emit(A.ADDI(7, 0, 2))                   # address 2 -- misaligned for SW
