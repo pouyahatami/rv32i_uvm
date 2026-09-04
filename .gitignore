@@ -56,12 +56,11 @@ docs/COURSE.html
 docs/WAVEFORMS.md
 
 # Working notes kept locally, not published: internal roadmap, known-gaps
-# list, build journal, personal tooling notes, and the EDA Playground guide
-# that RUNNING.md supersedes.
+# list, build journal, and the EDA Playground guide that RUNNING.md supersedes.
+# (docs/WAVEFORMS.md is already covered by the personal-notes block above.)
 docs/ROADMAP.md
 docs/GAPS.md
 docs/JOURNAL.md
-docs/WAVEFORMS.md
 verif/uvm/EDA_PLAYGROUND_SETUP.md
 
 # Unreferenced/stale diagrams kept locally: the detailed UVM diagram still
