@@ -434,6 +434,15 @@ defensible scope: plenty of real embedded RISC-V cores ship M-mode only.
 bits do not exist. `mtvec` stores its low two bits but always behaves as direct
 mode.
 
+**CSR write permissions are not enforced.** A write to a read-only CSR
+(`mhartid`, or any address with `addr[11:10] == 2'b11`) and a write to an
+unimplemented address should both raise an illegal-instruction exception. Here
+they are silently dropped, and an unimplemented address reads as zero rather
+than trapping. `mepc[1:0]` *is* masked to zero on write, since IALIGN is 32.
+This is the gap most likely to be found first by `riscv-arch-test`, and it is
+recorded rather than fixed because the CSR permission check wants to be one
+decode rule rather than a special case per address.
+
 **Illegal-instruction coverage is coarse.** An unrecognised opcode, or an
 unrecognised `funct3`/`funct12` under SYSTEM, traps. A bogus `funct7` on a known
 R-type opcode does not. Full coverage is a much larger decode surface for

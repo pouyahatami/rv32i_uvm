@@ -17,7 +17,9 @@ How to read the columns:
   for `hazard`) against Spike-generated golden values; `uart-mon` is
   `tb_pipe_csr`'s independent byte-stream monitor.
 - **Assertions**: properties in `verif/sva/hazard_sva.sv`, bound into
-  `riscv_pipe` in every simulating flow, failure-gated.
+  `riscv_pipe` by `run_uvm.sh` and by `run_sim.sh`'s Verilator arm, failure-gated
+  in both. Not by the Icarus arm: Icarus 12 parses `assert property` without
+  evaluating it, so binding there would report a pass that never ran.
 - **Coverage**: bins in the plain-SystemVerilog tally
   (`verif/uvm/src/rv32i_coverage.svh`). SVA `cover` properties are listed
   where they exist but are **not currently collected by any flow**, a known
@@ -30,7 +32,8 @@ How to read the columns:
 | MEM-over-WB forward priority | random (d1+d2 same reg) | lockstep | `a_fwd_mem_priority_*` | SVA `c_fwd_both_stages` only | verified (the shipped distance-3 bug's property) |
 | No forward for x0 | random (`rd.x0` writes) | lockstep | `a_no_fwd_x0_*` | `rd.x0` | verified |
 | Load-use interlock | random (load-use bias), hazard | lockstep, end-state | `a_lwstall_effect`, `a_stall_has_cause` | `hazard.load_use_d1`; SVA `c_lwstall` | verified |
-| Flush-beats-stall priority | random (branch × load-use coincidence) | lockstep | `a_flush_beats_stall` | SVA `c_stall_and_flush` | verified |
+| Flush-beats-stall priority | csr (trap × load-use coincidence) | end-state | `a_flush_beats_stall`, `a_lwstall_holds_pc`, `a_redirect_beats_stall` | SVA `c_stall_and_trap`, `c_stall_and_debug`, `c_stall_and_flush` | verified; see note 9 -- the random stream cannot reach this cross at all |
+| Redirect target reaches the PC (trap/mret/debug/branch/jump) | random (branch, jump), csr (trap, mret), debug | lockstep (PC check), end-state | `a_pc_trap`, `a_pc_mret`, `a_pc_enterdebug`, `a_pc_exitdebug`, `a_pc_branch`, `a_pc_jump` | none | verified; added with D7, which lived in exactly this gap |
 | Conditional branches (BEQ/BNE), flush of wrong path | random (forward-only), hazard | lockstep (PC check), end-state | `a_branch_flushes_both`, `a_flushd/e_has_cause` | `branch.{taken,not_taken,beq,bne}`, `x_op_rs1/2.branch_*` | verified; BLT/BGE/BLTU/BGEU not generated |
 | JAL (resolved in ID) | random, hazard | lockstep, end-state | `a_jump_flushes` | `opcode.jal` | random stimulus added; link-register writeback checked by lockstep |
 | JALR (resolved in EX) | random (AUIPC-paired), hazard | lockstep | `a_branch_flushes_both` (fires on PCSrcE) | `opcode.jalr` | random stimulus added; target register is a forced d1 dependency by construction |
@@ -54,10 +57,20 @@ How to read the columns:
 
 ## Known holes this table makes visible
 
-1. **SVA cover properties are written but never collected.** Fourteen
+1. **SVA cover properties are written but never collected.** Fifteen
    `cover property` directives exist to prove the assertions above them pass
    non-vacuously, and no run script reports their hit counts. Until a flow
    prints them, "SVA `c_*`" cells describe intent, not measurement.
+
+   Two things did improve with D7. `run_sim.sh` now binds `verif/sva` into its
+   Verilator arm, so the assertions are at least *evaluated* against the
+   directed trap, `mret` and debug stimulus -- previously they were bound only
+   in `run_uvm.sh`, whose generated stream contains none of those, so
+   `a_trap_flushes`, `a_mret_flushes`, `a_enterdebug_flushes` and
+   `a_exitdebug_flushes` had never once run non-vacuously anywhere. And
+   `c_lwstall_branch` was deleted: it covered `lwStallD && PCSrcE`, which is
+   unreachable by construction, since the interlock needs a load in EX and
+   `PCSrcE` needs a branch or JALR there.
 2. **The trap/CSR/interrupt column is directed-only, deliberately.** Random
    CSR/trap stimulus requires trap handlers in generated programs and ends
    the lockstep-vs-Spike simplicity. The cost is that those features get one
@@ -97,3 +110,19 @@ How to read the columns:
    forward jump often skips it. Ten seeds left it as the single union hole;
    thirty close it. It is reachable, not unreachable, but the margin is thin
    enough that weighting the I-type pool would be a fair change.
+
+9. **The random stream cannot reach a redirect-coincident-with-interlock
+   cross at all.** This is the hole D7 sat in, and it is worth stating as a
+   property of the model rather than as one bug's postmortem. Every bin in
+   `rv32i_coverage.svh` is derived from what `gen_stream.py` emits, and the
+   generator emits no SYSTEM instructions, no faulting accesses and no debug
+   requests. So the union figure -- 93/93 across thirty seeds -- measures how
+   completely the stimulus covers its own output, and says nothing about the
+   trap, CSR, interrupt and debug half of the design, which no random bin
+   describes and no lockstep check touches. `c_stall_and_trap` and
+   `c_stall_and_debug` now name the cross explicitly and report zero under the
+   UVM stream, which is the honest number rather than an absent one.
+
+   Closing this properly is the RVFI-style `retire_if` widening plus SYSTEM in
+   the generated stream, not more bins: bins derived from generator output
+   cannot describe stimulus the generator does not produce.

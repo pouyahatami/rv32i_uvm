@@ -3,8 +3,8 @@
 Every bug found in this project, what caused it, and whether anything now
 stops it coming back.
 
-Twenty entries. `D` numbers are bugs in the CPU; `V` numbers are bugs in the
-verification that was supposed to catch them. Six and fourteen. The second
+Twenty-one entries. `D` numbers are bugs in the CPU; `V` numbers are bugs in
+the verification that was supposed to catch them. Seven and fourteen. The second
 group is here because a broken checker is the more expensive failure -- it
 ends with someone "fixing" a design that was already right.
 
@@ -28,12 +28,17 @@ The design itself is in [DESIGN_GUIDE.md](DESIGN_GUIDE.md).
 | Writing an assertion that fired | 1 | V10 |
 | Disassembling with GNU binutils | 1 | V11 |
 | External DV review + a mutation test | 3 | V12, V13, V14 |
+| Re-reading the RTL, then a directed experiment | 1 | D7 |
 
 D1-D3 never reached a simulation -- they were wiring mistakes caught while the
 code was still being written, and they are here for completeness rather than
 because anything caught them. The other seventeen escaped into something that
-was supposed to catch them. Nothing was ever found by re-reading code already
-reviewed: D4 and D6 each survived several passes over the exact file involved.
+was supposed to catch them. For a long time nothing was ever found by
+re-reading code already reviewed -- D4 and D6 each survived several passes over
+the exact file involved -- until D7, which was found by reading the PC
+register's enable condition and asking what else could assert it. That is the
+one entry here where reading beat running, and it only worked because the
+question was narrow enough to answer by experiment in ten minutes.
 
 ---
 
@@ -322,6 +327,100 @@ by any test.** It was fixed by reasoning about the mux, not by a failure.
   project.
 - `unique case` makes an unhandled `ResultSrcM` encoding a simulation error
   rather than a latch.
+
+---
+
+## D7: A trap taken during a load-use stall never redirected the PC
+
+**Where** `rtl/hazard_unit.sv:62`
+
+**Symptom** None, on anything that was being run. Found by reading the PC
+register's enable condition, then confirmed with a two-program experiment
+before any change was made.
+
+**Root cause** `StallF` gates the PC register, and it was the raw interlock:
+
+```systemverilog
+assign StallF = lwStallD;
+```
+
+`datapath.sv` writes `PCF <= PCNextF` only when `!StallF`. So when a trap and
+the load-use interlock asserted on the same cycle, `csr_file.sv` committed
+`mepc`, `mcause` and `mtval` and cleared `mstatus.MIE`, `FlushD`/`FlushE`/
+`FlushM` squashed all three stages -- and the PC sat still. The trap was taken
+in every respect except the one that matters. The core then resumed straight
+down the faulting path, into the instruction the trap was supposed to skip.
+
+The measurement, on two programs identical but for one register index. Both put
+a misaligned `LW` at 0x08 with `mtvec` = 0x40; only the second makes the
+following instruction read the load's `rd`:
+
+```
+marker independent of the load     marker reads x5 (interlock asserts)
+  trap_en=1, StallF=0                trap_en=1, StallF=1
+  next PC = 0x40   (handler)         next PC = 0x10 -> 0x10 -> 0x14 -> 0x18
+  x4 = 0           (skipped)         x4 = 0x63      (the skipped instruction ran)
+```
+
+`mepc` and `mcause` read identically in both columns, which is what makes this
+hard to see from architectural state alone: the CSR side is perfect.
+
+The misaligned load is the cheap trigger. The same line is reached by **a timer
+interrupt landing on any load with a dependent successor**, which is ordinary
+program behaviour rather than a corner encoding, and by a debug halt request
+arriving during an interlock.
+
+**Why nothing caught it.** Every checker in the project was looking somewhere
+else, and each for a defensible reason:
+
+- The UVM scoreboard lockstep-checks every retirement against Spike, and would
+  have caught this instantly -- but `gen_stream.py` emits no SYSTEM
+  instructions and no faulting accesses, so the generated stream contains no
+  traps at all. Thirty seeds, 93 of 93 coverage bins across the union, and the
+  coincidence is not reachable in any of them.
+- `tb_pipe_csr` does take a misaligned-load trap, and did so with the
+  following instruction independent of the load. One register index away.
+- The bound assertions were bound only in `run_uvm.sh`, so `a_trap_flushes`
+  had never been evaluated against a trap.
+- `a_trap_flushes` would not have caught it anyway. It asserts
+  `trap_en |-> FlushD && FlushE && FlushM`, all three of which were true. The
+  entire assertion file checked which stages a redirect *squashed* and never
+  once checked that the PC *went anywhere*.
+- Worse, `a_lwstall_effect` read `lwStallD |-> StallF && StallD && FlushE`,
+  which asserts the bug. Fixing the RTL makes that assertion fail.
+
+**The check now**
+
+- `program_csr.py`'s misaligned-load marker now reads the faulting load's `rd`,
+  so the interlock and the trap redirect land on the same cycle. Re-seeding the
+  bug fails `tb_pipe_csr` on `x6` and on `x30`, the misaligned-trap counter --
+  the second is the real tell, because it says the handler never ran:
+
+```
+########## SEEDED: StallF ungated ##########
+  csr : FAIL: x6 = 00000000, expected 00000333
+        FAIL: x30 = 00000001, expected 00000002
+```
+
+- Six new `a_pc_*` properties in `hazard_sva.sv` check that each redirect
+  source's target actually reached the PC, mirroring the priority chain in
+  `datapath.sv`'s `PCNextF` mux. `a_lwstall_effect` was split into
+  `a_lwstall_holds_pc` and `a_redirect_beats_stall`, which state the priority
+  in both directions instead of asserting the old behaviour. Re-seeding fires
+  `a_redirect_beats_stall`.
+- `run_sim.sh` now binds `verif/sva` into its Verilator arm, so those
+  properties are evaluated against the directed trap, `mret` and debug
+  stimulus rather than only against a generated stream that has none.
+
+**What it says about the coverage model.** The 93-bin model reported 100% union
+across thirty seeds while this was live. That number was never wrong; it was
+answering a narrower question than it looked like it was answering. Every bin
+is derived from what `gen_stream.py` can produce, so the union measures how well
+the generator covers its own output. Bins for the cross this bug lived in --
+a redirect coincident with an interlock -- did not exist, and could not have
+been hit if they had. `c_stall_and_trap` and `c_stall_and_debug` in
+`hazard_sva.sv` now name that cross explicitly, and under the UVM stream they
+report zero, which is the honest number.
 
 ---
 
