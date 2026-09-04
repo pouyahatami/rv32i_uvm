@@ -40,5 +40,16 @@ bind riscv_pipe hazard_sva u_hazard_sva (
     .EnterDebug(enter_debug),
     .ExitDebug (exit_debug),
     .trap_en   (trap_en),
-    .mret_enE  (mret_enE)
+    .mret_enE  (mret_enE),
+
+    // Redirect targets, for the "the PC actually landed" properties. mtvec_w,
+    // mepc_w and the two PC targets are datapath locals, reached by downward
+    // reference the same way lwStallD is.
+    .PCF            (PC),
+    .mtvec_w        (dp.mtvec_w),
+    .mepc_w         (dp.mepc_w),
+    .dpc            (dpc),
+    .dm_halt_addr_i (dm_halt_addr_i),
+    .PCTargetE      (dp.PCTargetE),
+    .PCTargetD      (dp.PCTargetD)
 );
