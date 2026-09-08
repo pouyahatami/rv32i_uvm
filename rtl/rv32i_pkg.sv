@@ -40,6 +40,16 @@ package rv32i_pkg;
   parameter logic [1:0] ALUOP_RITYPE_FAMILY = 2'b10; // funct3 selects the op
   parameter logic [1:0] ALUOP_LUI_PASSTHRU  = 2'b11; // forces ALU_PASSB
 
+  // ---- ImmSrc: which immediate format extend.sv assembles ----
+  // This encoding is a contract between two files -- maindec drives it,
+  // extend.sv decodes it -- so it lives here rather than as matching magic
+  // numbers and comments at both ends, the way ALUOp and ResultSrc already do.
+  parameter logic [2:0] IMM_I = 3'b000; // loads, ALU-immediates, jalr
+  parameter logic [2:0] IMM_S = 3'b001; // stores
+  parameter logic [2:0] IMM_B = 3'b010; // branches
+  parameter logic [2:0] IMM_J = 3'b011; // jal
+  parameter logic [2:0] IMM_U = 3'b100; // lui, auipc
+
   // ---- ResultSrc -----------
   parameter logic [1:0] RESULT_ALU     = 2'b00;
   parameter logic [1:0] RESULT_MEM     = 2'b01;

@@ -3,8 +3,8 @@
 Every bug found in this project, what caused it, and whether anything now
 stops it coming back.
 
-Twenty-one entries. `D` numbers are bugs in the CPU; `V` numbers are bugs in
-the verification that was supposed to catch them. Seven and fourteen. The second
+Twenty-two entries. `D` numbers are bugs in the CPU; `V` numbers are bugs in
+the verification that was supposed to catch them. Eight and fourteen. The second
 group is here because a broken checker is the more expensive failure -- it
 ends with someone "fixing" a design that was already right.
 
@@ -28,17 +28,26 @@ The design itself is in [DESIGN_GUIDE.md](DESIGN_GUIDE.md).
 | Writing an assertion that fired | 1 | V10 |
 | Disassembling with GNU binutils | 1 | V11 |
 | External DV review + a mutation test | 3 | V12, V13, V14 |
-| Re-reading the RTL, then a directed experiment | 1 | D7 |
+| Re-reading the RTL, then a directed experiment | 2 | D7, D8 |
 
 D1-D3 never reached a simulation -- they were wiring mistakes caught while the
 code was still being written, and they are here for completeness rather than
-because anything caught them. The other seventeen escaped into something that
+because anything caught them. The other eighteen escaped into something that
 was supposed to catch them. For a long time nothing was ever found by
 re-reading code already reviewed -- D4 and D6 each survived several passes over
 the exact file involved -- until D7, which was found by reading the PC
-register's enable condition and asking what else could assert it. That is the
-one entry here where reading beat running, and it only worked because the
-question was narrow enough to answer by experiment in ten minutes.
+register's enable condition and asking what else could assert it, and D8, from
+reading the SYSTEM overlay and asking what else its input field could be. Those
+two are where reading beat running, and both worked for the same reason: the
+question was narrow enough to settle by experiment in ten minutes, on one
+module rather than on the pipeline.
+
+Both are also bugs no checker in the project could have found, which is the
+more useful thing they have in common. D7 needed a cross the coverage model did
+not contain; D8 needed a CSR address neither the directed test nor the
+generator had any reason to pick. Reading is not a better method than running.
+It is the method that covers what the stimulus cannot reach, and knowing which
+of the two a given bug required is most of what the bug is worth.
 
 ---
 
@@ -421,6 +430,84 @@ a redirect coincident with an interlock -- did not exist, and could not have
 been hit if they had. `c_stall_and_trap` and `c_stall_and_debug` in
 `hazard_sva.sv` now name that cross explicitly, and under the UVM stream they
 report zero, which is the honest number.
+
+---
+
+## D8: Six CSR addresses also decoded as `ecall`, `mret`, `ebreak` and `dret`
+
+**Where** `rtl/controller.sv:36-39`
+
+**Symptom** None, on anything that was being run. `csrrs x1, medeleg, x0`
+redirects the PC to `mepc` instead of reading a CSR. Found by reading the
+SYSTEM overlay and asking what else `Instr[31:20]` can be, then confirmed on a
+standalone decoder instance before any change was made.
+
+**Root cause** SYSTEM packs two unrelated instruction groups into one opcode,
+and `funct3` is what tells them apart. When `funct3 == 000` the top twelve bits
+are a `funct12` opcode (`ecall`, `ebreak`, `mret`, `dret`); for the six CSR
+`funct3` values the same twelve bits are a CSR **address**. The overlay decoded
+`funct12` without ever consulting `funct3`:
+
+```systemverilog
+assign is_mret = system_instr & (Instr[31:20] == 12'b001100000010);
+```
+
+So any CSR instruction whose address happened to equal a `funct12` pattern set
+both `is_csr` and a privileged-instruction bit. Four addresses collide, and
+each is a real, architecturally defined CSR:
+
+| CSR read | address | also decoded as | consequence |
+|---|---|---|---|
+| `ustatus` | 0x000 | `ecall` | takes an ECALL trap |
+| `fflags` | 0x001 | `ebreak` | enters debug mode |
+| `medeleg` | 0x302 | `mret` | PC redirects to `mepc` |
+| `dscratch0` | 0x7b2 | `dret` | resumes from debug mode |
+
+The measurement, driving `controller` directly, before and after:
+
+```
+csrrs x1,medeleg(0x302),x0   csr=1 mret=1  ->  csr=1 mret=0
+csrrs x1,fflags(0x001),x0    csr=1 ebreak=1 -> csr=1 ebreak=0
+csrrs x1,dscratch0(0x7b2),x0 csr=1 dret=1  ->  csr=1 dret=0
+csrrs x1,ustatus(0x000),x0   csr=1 ecall=1 ->  csr=1 ecall=0
+ecall / mret                 unchanged
+```
+
+`medeleg` is the worst of the four. `datapath.sv` drives `mret_enE` straight
+from `ctrlE.is_mret`, and `csr_file.sv` ranks `mret` above `csr_we`, so the CSR
+write is dropped *and* the PC jumps to whatever `mepc` holds. A register read
+became an unconditional indirect branch.
+
+**Fix** Split SYSTEM on `funct3` first, and hang the `funct12` compares off
+that split rather than off the opcode:
+
+```systemverilog
+assign priv_instr = system_instr & (funct3 == 3'b000);
+assign is_mret    = priv_instr & (Instr[31:20] == 12'b001100000010);
+```
+
+**Why nothing caught it.** Nothing could have. `gen_stream.py` emits no SYSTEM
+instructions at all, so the UVM scoreboard -- which would have caught this on
+the first retirement, since Spike reads the CSR and moves to PC+4 -- never sees
+one. `program_csr.py` touches only the nine CSRs `csr_file.sv` implements
+(0x300, 0x304, 0x305, 0x340-0x344, 0xF14), and none of those nine collides with
+a `funct12` pattern. The directed test and the random stream were each looking
+at a set of CSR addresses chosen for a different reason, and the union of those
+two sets misses all four collisions.
+
+**What stops it coming back.** Nothing automated, and the entry says so. The
+honest fix is a decoder-level check that no CSR encoding asserts a privileged
+bit -- one assertion in `verif/sva`, over `controller`'s outputs rather than
+over the pipeline -- and that is the natural place for it because the property
+is about decode, not about timing. Recorded here rather than written now
+because this session was scoped to design decisions, not to new checkers.
+
+**The wider point.** This is the same shape as the CSR permission gap in
+DESIGN_GUIDE.md section 9: both come from decoding a field without first
+establishing which field it is. The `unique case` habit used everywhere else in
+this file is the structural answer -- a case on `funct3` would not have let two
+arms claim the same instruction -- and the overlay is the one place in the
+decoder that uses parallel `assign`s instead.
 
 ---
 

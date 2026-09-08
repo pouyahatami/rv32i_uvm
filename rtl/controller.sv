@@ -3,7 +3,9 @@
 //
 // Combinational decode, instantiated once in the Decode stage. Base opcodes
 // go through maindec/aludecoder; SYSTEM (ECALL, MRET, EBREAK, DRET, the CSR
-// instructions) is decoded as an overlay here from Instr[31:20].
+// instructions) is decoded as an overlay here, from funct3 and then
+// Instr[31:20] -- in that order, because funct3 is what decides whether those
+// twelve bits are a funct12 opcode or a CSR address.
 //
 // Illegal-instruction detection is coarse by design: an unknown top-level
 // opcode, or an unknown funct3/funct12 under SYSTEM. A bogus funct7 on an
@@ -25,21 +27,31 @@ module controller (
 );
 
   logic [1:0] ALUOp;
-  logic       system_instr;
+  logic       system_instr, priv_instr;
   logic       is_ebreak, is_dret, is_ecall, is_mret, is_csr;
   logic       RegWrite, MemWrite, Branch, ALUSrc, Jalr, AUIPCSel;
   logic [1:0] ResultSrc;
   logic [3:0] ALUControl;
   logic       Rs1UsedD_md, Rs2UsedD_md; // maindec's raw outputs, before the CSR override below
 
+  // funct3 splits SYSTEM in two, and every decode below hangs off that split.
+  // funct3==000 is the privileged group, where Instr[31:20] is a funct12
+  // opcode. 001/010/011 and 101/110/111 are the CSR instructions, where those
+  // same twelve bits are a CSR *address* instead -- funct3[1:0] selects
+  // RW/RS/RC and funct3[2] selects the *I variants. 100 is reserved.
+  //
+  // Gating the funct12 compares on priv_instr is load-bearing, not tidiness.
+  // Ungated they also match CSR addresses that share the bit pattern: fflags
+  // (0x001) decoded as EBREAK, medeleg (0x302) as MRET, dscratch0 (0x7b2) as
+  // DRET -- a CSR read that redirected the PC. That was D8 in docs/BUGS.md.
   assign system_instr = (op == OP_SYSTEM);
-  assign is_ebreak = system_instr & (Instr[31:20] == 12'b000000000001);
-  assign is_dret   = system_instr & (Instr[31:20] == 12'b011110110010);
-  assign is_ecall  = system_instr & (Instr[31:20] == 12'b000000000000);
-  assign is_mret   = system_instr & (Instr[31:20] == 12'b001100000010);
-  // funct3[1:0] is the RW/RS/RC selector; funct3[2] selects the *I variants.
-  // 000 is a privileged control transfer and 100 is reserved.
-  assign is_csr    = system_instr & (funct3 != 3'b000) & (funct3 != 3'b100);
+  assign priv_instr   = system_instr & (funct3 == 3'b000);
+  assign is_csr       = system_instr & (funct3 != 3'b000) & (funct3 != 3'b100);
+
+  assign is_ecall  = priv_instr & (Instr[31:20] == 12'b000000000000);
+  assign is_ebreak = priv_instr & (Instr[31:20] == 12'b000000000001);
+  assign is_mret   = priv_instr & (Instr[31:20] == 12'b001100000010);
+  assign is_dret   = priv_instr & (Instr[31:20] == 12'b011110110010);
 
   logic known_opcode, system_known;
   assign known_opcode = (op == OP_LOAD)  | (op == OP_STORE) | (op == OP_RTYPE) |
@@ -50,9 +62,29 @@ module controller (
   logic is_illegal;
   assign is_illegal = ~known_opcode | (system_instr & ~system_known);
 
-  maindec md(op, ImmSrc, MemWrite, Branch, ALUSrc, RegWrite,
-             Jump, Jalr, AUIPCSel, ALUOp, Rs1UsedD_md, Rs2UsedD_md, ResultSrc);
-  aludecoder  ad(op[5], funct3, funct7b5, ALUOp, ALUControl);
+  // Named connections, like every other instantiation in this project. These
+  // two were positional, which is how D2 happened one file over: twelve
+  // same-width control bits in a row, and a port list that can be reordered
+  // without a single tool complaining.
+  maindec md (.op        (op),
+              .ImmSrc    (ImmSrc),
+              .MemWrite  (MemWrite),
+              .Branch    (Branch),
+              .ALUSrc    (ALUSrc),
+              .RegWrite  (RegWrite),
+              .Jump      (Jump),
+              .Jalr      (Jalr),
+              .AUIPCSel  (AUIPCSel),
+              .ALUOp     (ALUOp),
+              .Rs1UsedD  (Rs1UsedD_md),
+              .Rs2UsedD  (Rs2UsedD_md),
+              .ResultSrc (ResultSrc));
+
+  aludecoder ad (.opb5       (op[5]),
+                 .funct3     (funct3),
+                 .funct7b5   (funct7b5),
+                 .ALUOp      (ALUOp),
+                 .ALUControl (ALUControl));
 
   // The *I CSR variants reuse InstrD[19:15] as a zero-extended immediate,
   // not a register index.
@@ -108,13 +140,13 @@ module maindec (
     unique case (op)
       OP_LOAD: begin
         RegWrite  = 1'b1;
-        ImmSrc    = 3'b000;
+        ImmSrc    = IMM_I;
         ALUSrc    = 1'b1;
         ResultSrc = RESULT_MEM;
         Rs1UsedD  = 1'b1;
       end
       OP_STORE: begin
-        ImmSrc   = 3'b001;
+        ImmSrc   = IMM_S;
         ALUSrc   = 1'b1;
         MemWrite = 1'b1;
         Rs1UsedD = 1'b1;
@@ -127,7 +159,7 @@ module maindec (
         Rs2UsedD = 1'b1;
       end
       OP_BRANCH: begin
-        ImmSrc   = 3'b010;
+        ImmSrc   = IMM_B;
         Branch   = 1'b1;
         ALUOp    = ALUOP_BRANCH_FAMILY;
         Rs1UsedD = 1'b1;
@@ -135,20 +167,20 @@ module maindec (
       end
       OP_ITYPE: begin
         RegWrite = 1'b1;
-        ImmSrc   = 3'b000;
+        ImmSrc   = IMM_I;
         ALUSrc   = 1'b1;
         ALUOp    = ALUOP_RITYPE_FAMILY;
         Rs1UsedD = 1'b1;
       end
       OP_JAL: begin
         RegWrite  = 1'b1;
-        ImmSrc    = 3'b011;
+        ImmSrc    = IMM_J;
         Jump      = 1'b1;
         ResultSrc = RESULT_PCPLUS4;
       end
       OP_JALR: begin
         RegWrite  = 1'b1;
-        ImmSrc    = 3'b000;
+        ImmSrc    = IMM_I;
         ALUSrc    = 1'b1;
         Jalr      = 1'b1;
         ResultSrc = RESULT_PCPLUS4;
@@ -157,13 +189,13 @@ module maindec (
       end
       OP_LUI: begin
         RegWrite = 1'b1;
-        ImmSrc   = 3'b100;
+        ImmSrc   = IMM_U;
         ALUSrc   = 1'b1;
         ALUOp    = ALUOP_LUI_PASSTHRU;
       end
       OP_AUIPC: begin
         RegWrite = 1'b1;
-        ImmSrc   = 3'b100;
+        ImmSrc   = IMM_U;
         ALUSrc   = 1'b1;
         AUIPCSel = 1'b1;
         ALUOp    = ALUOP_ADD_FAMILY;

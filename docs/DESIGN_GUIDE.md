@@ -448,6 +448,21 @@ unrecognised `funct3`/`funct12` under SYSTEM, traps. A bogus `funct7` on a known
 R-type opcode does not. Full coverage is a much larger decode surface for
 comparatively little payoff at this scale.
 
+**MMIO is word-only in the reference model and any-width in the RTL.** The
+CLINT and UART registers are 32-bit, and `rvproj_devices.cc` enforces that:
+`read32`/`write32` reject any access that is not an aligned 4-byte one, so
+Spike raises an access fault. `mem_bus.sv` makes no such check -- it routes
+MMIO `rdata` straight to the core, bypassing the `funct3` sub-word extraction
+that `dmem.sv` applies to RAM, so an `lb` from `mtime` returns the whole
+32-bit counter rather than its low byte. The two models therefore disagree on
+every sub-word MMIO access. Nothing generates one today: `gen_stream.py`
+confines loads and stores to the RAM window, and `program_csr.py` uses `lw`
+and `sw` throughout. It is recorded here rather than fixed because the fix is
+a decision, not a patch -- either the RTL gains the width check the reference
+model already assumes, or the bus gains a shared sub-word extractor and the
+Spike plugin relaxes -- and picking one without a test that can tell them
+apart would just move the disagreement.
+
 **No branch prediction.** A static predictor would reuse the flush-and-redirect
 mechanism that already exists, so it is a bounded addition rather than a
 redesign.

@@ -2,16 +2,18 @@
 // extend.sv
 //
 // Sign-extends the immediate field of an RV32I instruction. The immediate
-// layout depends on the instruction format, selected by `immsrc`.
+// layout depends on the instruction format, selected by `immsrc`, which
+// controller.sv's maindec drives. The IMM_* encoding itself is defined once
+// in rv32i_pkg.sv; this file names it rather than restating the bit patterns.
 //
-//   000  I-type     -> sign-extend instr[31:20]              (also JALR)
-//   001  S-type     -> sign-extend {instr[31:25], instr[11:7]}
-//   010  B-type     -> sign-extend {instr[31], instr[7], instr[30:25],
-//                                   instr[11:8], 1'b0}
-//   011  J-type     -> sign-extend {instr[31], instr[19:12], instr[20],
-//                                   instr[30:21], 1'b0}
-//   100  U-type     -> {instr[31:12], 12'b0}
+//   IMM_I  -> sign-extend instr[31:20]              (also JALR)
+//   IMM_S  -> sign-extend {instr[31:25], instr[11:7]}
+//   IMM_B  -> sign-extend {instr[31], instr[7], instr[30:25], instr[11:8], 0}
+//   IMM_J  -> sign-extend {instr[31], instr[19:12], instr[20], instr[30:21], 0}
+//   IMM_U  -> {instr[31:12], 12'b0}
 // =============================================================================
+
+import rv32i_pkg::*;
 
 module extend (
     input  logic [31:7] instr,
@@ -21,17 +23,17 @@ module extend (
 
   always_comb
     unique case (immsrc)
-      3'b000: // I-type
+      IMM_I:
         immext = {{20{instr[31]}}, instr[31:20]};
-      3'b001: // S-type (stores)
+      IMM_S:
         immext = {{20{instr[31]}}, instr[31:25], instr[11:7]};
-      3'b010: // B-type (branches)
+      IMM_B:
         immext = {{20{instr[31]}}, instr[7], instr[30:25], instr[11:8], 1'b0};
-      3'b011: // J-type (jal)
+      IMM_J:
         immext = {{12{instr[31]}}, instr[19:12], instr[20], instr[30:21], 1'b0};
-      3'b100: // U-type (lui, auipc)
+      IMM_U:
         immext = {instr[31:12], 12'b0};
-      default:
+      default: // 101/110/111 are unassigned; latch-safety only
         immext = 32'b0;
     endcase
 endmodule

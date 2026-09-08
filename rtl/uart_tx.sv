@@ -8,6 +8,13 @@
 // UART_STATUS (+0x4) is read-only and always reports TX_READY=1. A driver
 // that polls it before every write still works against real hardware that
 // takes cycles to drain.
+//
+// Reading UART_TXDATA back is not something a real TX-only UART offers. It is
+// here because it gives the differential flow a second, architectural check on
+// the write path -- tb_pipe_csr compares the readback through the register
+// file as well as the byte stream through the monitor -- and rvproj_devices.cc
+// mirrors it exactly for that reason. Both models are wrong about real
+// hardware in the same direction, on purpose.
 // =============================================================================
 
 module uart_tx (

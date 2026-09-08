@@ -17,6 +17,13 @@
 //   anything else                   -> reads as RAM's (out-of-range)
 //                                      output; writes are simply dropped
 //                                      (we is gated per-target below)
+//
+// Width: `funct3` is forwarded to dmem.sv, which does the sub-word extract for
+// RAM, but the two MMIO targets are 32-bit registers and their rdata is
+// returned as-is. So an `lb` from an MMIO address yields the whole register,
+// not its low byte. The Spike model treats a non-word MMIO access as an
+// access fault instead; that divergence is deliberate-by-omission rather than
+// agreed, and DESIGN_GUIDE.md section 9 records why it has not been settled.
 // =============================================================================
 
 import rv32i_pkg::*;

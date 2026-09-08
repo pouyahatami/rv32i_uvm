@@ -1,16 +1,25 @@
 // =============================================================================
 // alu.sv
 //
-// Combinational ALU. Operation codes are named in rv32i_pkg.sv:
+// Combinational ALU, decoding the ALU_* codes defined in rv32i_pkg.sv.
 //
-//   0000 add   0100 xor    1000 sra
-//   0001 sub   0101 slt    1001 sltu
-//   0010 and   0110 sll    1010 passb
-//   0011 or    0111 srl
+// The encoding is not arbitrary and this module depends on that. Three codes
+// use the adder -- ALU_ADD (0000), ALU_SUB (0001), ALU_SLT (0101) -- and among
+// those, bit 0 is exactly "subtract". So bit 0 is reused as the adder's
+// "invert b, carry in 1" control (`condinvb`/`sum`) and one adder serves all
+// three. Other codes also have bit 0 set (ALU_OR, ALU_SRL, ALU_SLTU); they
+// simply never read `sum`, which is what makes the shortcut safe.
 //
-// PASSB returns b untouched, so LUI's U-immediate can use the normal EX path
-// and writeback mux instead of a dedicated source threaded from D to W.
+// Renumbering ALU_* in the package without preserving that property silently
+// breaks the subtract path here, and `isAddSub` -- which gates the overflow
+// bit ALU_SLT depends on, and was D1 -- has to be kept in step by hand. That
+// is why this file names the codes instead of open-coding the bit patterns.
+//
+// ALU_PASSB returns b untouched, so LUI's U-immediate can use the normal EX
+// path and writeback mux instead of a dedicated source threaded from D to W.
 // =============================================================================
+
+import rv32i_pkg::*;
 
 module alu (
     input  logic [31:0] a,
@@ -27,35 +36,35 @@ module alu (
 
   assign condinvb = alucontrol[0] ? ~b : b;
   assign sum = a + condinvb + alucontrol[0];
-  assign isAddSub = (alucontrol == 4'b0000) | (alucontrol == 4'b0001) |
-                    (alucontrol == 4'b0101);
+  assign isAddSub = (alucontrol == ALU_ADD) | (alucontrol == ALU_SUB) |
+                    (alucontrol == ALU_SLT);
 
   // The default drives 0 rather than X: an unreachable path should still
   // produce a known value.
   always_comb
     unique case (alucontrol)
-      4'b0000:
+      ALU_ADD:
         result = sum;
-      4'b0001:
+      ALU_SUB:
         result = sum;
-      4'b0010:
+      ALU_AND:
         result = a & b;
-      4'b0011:
+      ALU_OR:
         result = a | b;
-      4'b0100:
+      ALU_XOR:
         result = a ^ b;
-      4'b0101:
+      ALU_SLT:
         result = {31'b0, sum[31] ^ v};
-      4'b0110:
+      ALU_SLL:
         result = a << b[4:0];
-      4'b0111:
+      ALU_SRL:
         result = a >> b[4:0];
-      4'b1000:
+      ALU_SRA:
         result = $signed(a) >>> b[4:0];
-      4'b1001:
+      ALU_SLTU:
         result = {31'b0, a < b};
-      4'b1010:
-        result = b;                     // passb (lui)
+      ALU_PASSB:
+        result = b;                     // lui
       default:
         result = 32'b0;
     endcase
