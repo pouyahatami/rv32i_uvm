@@ -113,7 +113,7 @@ module datapath (
   always_ff @(posedge clk, posedge reset)
     if (reset)         begin InstrD <= NOP_INSTR; PCD <= 32'h0; PCPlus4D <= 32'h0;
                              instrValidD <= 1'b0; end
-    else if (FlushD)   begin InstrD <= NOP_INSTR; instrValidD <= 1'b0; end // monitor should not observe this instr
+    else if (FlushD)   begin InstrD <= NOP_INSTR; instrValidD <= 1'b0; end // monitor should not observe this instr (bubble)
     else if (!StallD)  begin InstrD <= InstrF; PCD <= PCF; PCPlus4D <= PCPlus4F;
                              instrValidD <= 1'b1; end
 
@@ -149,7 +149,7 @@ module datapath (
       RdE <= 5'b0; Rs1E <= 5'b0; Rs2E <= 5'b0; funct3E <= 3'b0;
       RD1E <= 32'b0; RD2E <= 32'b0; PCE <= 32'b0; PCPlus4E <= 32'b0; ImmExtE <= 32'b0;
       InstrE <= NOP_INSTR;
-      instrValidE <= 1'b0;
+      instrValidE <= 1'b0; // monitor should not observe this instr (bubble)
     end else begin
       ctrlE <= ctrlD_c;
       RdE <= RdD; Rs1E <= Rs1D; Rs2E <= Rs2D; funct3E <= InstrD[14:12];

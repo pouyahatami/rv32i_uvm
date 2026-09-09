@@ -104,7 +104,7 @@ module riscv_pipe (
                            .dpc                 (dpc),
                            .dcsr                (dcsr));
 
-  // ---- retirement interface, tapped by the UVM monitor ----
+  // ---- retirement interface, observed by the UVM monitor ----
   retire_if retire(.clk(clk), .reset(reset));
 
   // ---- datapath ----
